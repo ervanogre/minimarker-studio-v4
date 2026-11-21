@@ -1,0 +1,32 @@
+name: Build MiniMarker Studio V4 Portable EXE
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install & Copy Offline Libs
+        shell: bash
+        run: |
+          npm install
+          npm install --save-dev electron electron-builder
+          mkdir -p www/libs
+          cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
+          cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
+          cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
+          cp node_modules/jszip/dist/jszip.min.js www/libs/
+      - name: Package Portable EXE
+        run: |
+          npx electron-builder --win portable --config.appId="com.minimarker.studio.v4" --config.productName="MiniMarker-Studio-V4" --config.directories.output="dist_exe" --config.win.target="portable" --config.files="www/**/*" --config.files="electron-main.js" --config.files="package.json"
+      - name: Upload Portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniMarker-Studio-V4-Portable-EXE
+          path: dist_exe/*.exe
