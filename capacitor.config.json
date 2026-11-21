@@ -1,11 +1,5 @@
 {
   "appId": "com.minimarker.studio.v4",
   "appName": "MiniMarker Studio V4",
-  "webDir": "www",
-  "bundledWebRuntime": false,
-  "server": {
-    "url": "https://github.io",
-    "cleartext": true,
-    "errorPath": "index.html"
-  }
+  "webDir": "www"
 }
