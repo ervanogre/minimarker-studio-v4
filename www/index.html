@@ -3,228 +3,293 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MINIMARKER STUDIO V4</title>
   <script src="libs/dxf-parser.js"></script>
   <script src="libs/xlsx.full.min.js"></script>
   <script src="libs/jspdf.umd.min.js"></script>
   <script src="libs/jszip.min.js"></script>
-  <title>Mini Marker Studio</title>
   <style>
     :root {
-      --bg: #0b111e; --card: #131c2e; --card-border: #1e293b;
-      --primary: #2563eb; --primary-hover: #1d4ed8;
-      --text: #f1f5f9; --muted: #94a3b8; --success: #10b981;
+      --bg: #07060e;
+      --card: #110f21;
+      --neon-cyan: #00f5d4;
+      --neon-pink: #ff007f;
+      --neon-yellow: #fee440;
+      --neon-purple: #9b5de5;
+      --text: #f8fafc;
+      --muted: #a5b4fc;
     }
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { margin: 0; background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 48px; }
-    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-    .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-    h1 { font-size: 20px; margin: 0; }
-    .subtitle { font-size: 13px; color: var(--muted); margin: 0 0 12px 0; line-height: 1.4; }
-    .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-    .badge { background: #1e293b; color: #cbd5e1; font-size: 11px; padding: 4px 10px; border-radius: 99px; border: 1px solid #334155; }
-    .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); padding: 4px; border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--card-border); }
-    .tab { text-align: center; padding: 8px; font-size: 13px; border-radius: 8px; cursor: pointer; color: var(--muted); font-weight: 500; }
-    .tab.active { background: #1e293b; color: var(--text); }
-    .dropzone { border: 1.5px dashed #334155; background: var(--card); border-radius: 12px; padding: 20px 14px; text-align: center; margin-bottom: 12px; cursor: pointer; }
-    .dropzone.loaded { border-color: var(--success); background: rgba(16, 185, 129, 0.08); }
-    .dropzone p { margin: 4px 0; font-size: 13px; }
-    .dropzone small { color: var(--muted); font-size: 11px; }
-    select, input[type="text"], input[type="number"] {
-      width: 100%; background: var(--card); border: 1px solid #334155; color: var(--text);
-      padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px;
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body {
+      margin: 0; color: var(--text); padding: 12px;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle at 15% 15%, rgba(255, 0, 127, 0.16), transparent 40%),
+        radial-gradient(circle at 85% 25%, rgba(0, 245, 212, 0.14), transparent 42%),
+        radial-gradient(circle at 50% 90%, rgba(155, 93, 229, 0.18), transparent 45%);
+      min-height: 100vh;
     }
-    .btn { width: 100%; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
-    .btn:active { background: var(--primary-hover); }
-    .btn-secondary { background: var(--card); border: 1px solid #334155; color: var(--text); font-weight: 500; }
-    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 18px 0 10px 0; font-weight: 600; }
-    .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
-    .card-row { display: flex; justify-content: space-between; align-items: center; }
-    .card-title { font-weight: 600; font-size: 14px; }
+    .hidden { display: none !important; }
+
+    /* Layar Awal Graffiti Neon */
+    .splash-wrap {
+      min-height: 92vh; display: flex; flex-direction: column;
+      justify-content: center; align-items: center; text-align: center; padding: 18px;
+    }
+    .graffiti-badge {
+      display: inline-block; padding: 5px 14px; border-radius: 999px;
+      border: 1px solid var(--neon-yellow); color: var(--neon-yellow);
+      font-size: 11px; font-weight: 900; letter-spacing: 2px; margin-bottom: 14px;
+      box-shadow: 0 0 12px rgba(254, 228, 64, 0.35);
+    }
+    .graffiti-title {
+      font-size: 34px; font-weight: 900; font-style: italic; letter-spacing: 1.5px;
+      line-height: 1.1; margin: 0 0 10px 0; text-transform: uppercase;
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-yellow), var(--neon-pink));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 14px rgba(0, 245, 212, 0.45));
+      transform: skewX(-5deg);
+    }
+    .graffiti-creator {
+      font-size: 13px; font-weight: 800; letter-spacing: 2.5px;
+      color: var(--neon-pink); text-shadow: 0 0 10px rgba(255, 0, 127, 0.7);
+      margin-bottom: 34px; text-transform: uppercase;
+    }
+    .splash-btn-group { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* Tombol & Kartu Tema Graffiti Neon */
+    .btn {
+      width: 100%; padding: 13px 14px; border-radius: 12px;
+      border: 2px solid var(--neon-cyan);
+      background: linear-gradient(135deg, rgba(0, 245, 212, 0.2), rgba(155, 93, 229, 0.25));
+      color: #ffffff; font-size: 14px; font-weight: 900; letter-spacing: 0.8px;
+      text-transform: uppercase; cursor: pointer;
+      box-shadow: 0 0 15px rgba(0, 245, 212, 0.35), inset 0 0 8px rgba(0, 245, 212, 0.2);
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-pink {
+      border-color: var(--neon-pink);
+      background: linear-gradient(135deg, rgba(255, 0, 127, 0.28), rgba(155, 93, 229, 0.28));
+      box-shadow: 0 0 16px rgba(255, 0, 127, 0.45), inset 0 0 8px rgba(255, 0, 127, 0.25);
+    }
+    .btn-secondary {
+      border-color: var(--neon-yellow);
+      background: rgba(254, 228, 64, 0.1);
+      color: var(--neon-yellow);
+      box-shadow: 0 0 12px rgba(254, 228, 64, 0.25);
+    }
+    .card {
+      background: var(--card); border: 1.5px solid rgba(0, 245, 212, 0.35);
+      border-radius: 14px; padding: 12px; margin-bottom: 12px;
+      box-shadow: 0 0 16px rgba(155, 93, 229, 0.18);
+    }
+    .card-title {
+      font-size: 14px; font-weight: 900; color: var(--neon-cyan);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      text-shadow: 0 0 8px rgba(0, 245, 212, 0.4);
+    }
     .card-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-    .hidden { display: none; }
-    .fabric-block { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px; margin-bottom: 12px; }
-    .fabric-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .fabric-tag { background: #1d4ed8; color: white; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; }
-    canvas { width: 100%; background: #ffffff; border-radius: 6px; display: block; margin-top: 6px; }
-    .piece-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 12px; }
-    .piece-item select { width: auto; margin: 0; padding: 4px 6px; font-size: 11px; }
+    .card-row { display: flex; justify-content: space-between; align-items: center; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .tab-btn {
+      flex: 1; padding: 10px; border-radius: 10px; border: 1.5px solid #2e294e;
+      background: #110f21; color: var(--muted); font-weight: 800; font-size: 12px;
+      text-transform: uppercase; cursor: pointer;
+    }
+    .tab-btn.active {
+      border-color: var(--neon-pink); color: #fff;
+      background: rgba(255, 0, 127, 0.22);
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0.45);
+    }
+    .dropzone {
+      border: 2px dashed var(--neon-purple); border-radius: 12px; padding: 14px;
+      text-align: center; margin-bottom: 10px; cursor: pointer;
+      background: rgba(155, 93, 229, 0.08);
+    }
+    .dropzone.loaded {
+      border-color: var(--neon-cyan); border-style: solid;
+      background: rgba(0, 245, 212, 0.1);
+      box-shadow: 0 0 12px rgba(0, 245, 212, 0.25);
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%; padding: 9px 10px; border-radius: 8px;
+      border: 1.5px solid #312e59; background: #090814; color: #fff;
+      font-size: 13px; margin-bottom: 8px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--neon-cyan); box-shadow: 0 0 8px rgba(0,245,212,0.4); }
+    .piece-item { border-bottom: 1px solid #231f42; display: flex; }
+    #markerContainer canvas { width: 100%; height: auto; border-radius: 8px; background: #fff; display: block; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo">📐</div>
-    <h1>Mini Marker Studio</h1>
-  </div>
-  <p class="subtitle">Ubah file pola tas (.DXF) &amp; BOM Excel jadi lembar mini marker terpisah per fabric — langsung dari HP.</p>
-
-  <div class="badges">
-    <span class="badge">Upload DXF</span>
-    <span class="badge">Excel BOM / Colorway</span>
-    <span class="badge">PDF &amp; PNG</span>
-    <span class="badge">Bisa Offline</span>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" id="tabUpload" onclick="switchTab('upload')">📤 Upload File</div>
-    <div class="tab" id="tabManual" onclick="switchTab('manual')">📝 Atur Fabric Manual</div>
-  </div>
-
-  <div id="panelUpload">
-    <div class="dropzone" id="dxfZone" onclick="document.getElementById('dxfInput').click()">
-      <p id="dxfStatus">📄 <strong>Pilih file pola (.DXF)</strong></p>
-      <small>Mendukung DXF-AAMA (Modaris, Gerber, Optitex, Richpeace)</small>
-      <input type="file" id="dxfInput" accept=".dxf" class="hidden" onchange="handleDxfUpload(event)" />
+  <!-- LAYAR AWAL (SPLASH SCREEN) -->
+  <div id="homeSplashScreen" class="splash-wrap">
+    <div class="graffiti-badge">⚡ STREET CAD EDITION ⚡</div>
+    <h1 class="graffiti-title">MINIMARKER STUDIO V4</h1>
+    <div class="graffiti-creator">CREATED BY ERVAN ALVIAN</div>
+    <div class="splash-btn-group">
+      <button type="button" class="btn" onclick="openToolMode('manual')">🎨 1. BUAT MINIMARKER</button>
+      <button type="button" class="btn btn-pink" onclick="openToolMode('autosync')">⚡ 2. MINIMARKER AUTO SYNC</button>
     </div>
-
-    <label for="excelInput" class="dropzone" id="excelZone" style="display:block;">
-      <p id="excelStatus">📊 <strong>Pilih file BOM / Material Instruction (.XLSX / .CSV)</strong></p>
-      <small>Opsional — untuk memisahkan fabric (MA, L2, T1, T2, N1) &amp; Colorway otomatis</small>
-      <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)" />
-    </label>
-
-    <div id="colorwayBox" class="hidden">
-      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Pilih Colorway (Kode Warna Tas):</label>
-      <select id="colorwaySelect" onchange="applyColorwayMapping()"></select>
-    </div>
-
-    
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+  </div>
+  <!-- WORKSPACE UTAMA -->
+  <div id="mainAppScreen" class="hidden">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1.5px solid rgba(255,0,127,0.4);">
       <div>
-        <label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">Order No (Pojok Kiri Atas):</label>
-        <input type="text" id="orderNoInput" placeholder="Contoh: KT26JN022" />
+        <div style="font-size:16px; font-weight:900; font-style:italic; color:var(--neon-cyan); text-shadow:0 0 8px rgba(0,245,212,0.5);">MINIMARKER STUDIO V4</div>
+        <div style="font-size:10px; font-weight:700; color:var(--neon-pink); letter-spacing:1px;">BY ERVAN ALVIAN</div>
       </div>
-      <div>
-        <label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">Style No:</label>
-        <input type="text" id="styleNoInput" placeholder="Otomatis dari DXF/BOM" />
-      </div>
+      <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🏠 HOME</button>
     </div>
-    
-    <div class="card" style="padding:10px 12px; margin-bottom:12px;">
-      <div class="card-title" style="font-size:13px; margin-bottom:8px;">⚙️ Pengaturan Tampilan &amp; Layout A4</div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-        <div>
-          <label style="font-size:11px; color:var(--muted);">Jenis Font:</label>
-          <select id="fontFamilySelect" style="margin-bottom:6px;">
-            <option value='"Times New Roman", serif'>Times New Roman</option>
-            <option value='Arial, Helvetica, sans-serif'>Arial (Sans-Serif)</option>
-            <option value='"Courier New", monospace'>Courier (Monospace)</option>
-            <option value='Georgia, serif'>Georgia</option>
-          </select>
+
+    <div id="autoSyncBanner" class="card hidden" style="border-color:var(--neon-pink); background:rgba(255,0,127,0.12);">
+      <div class="card-title" style="color:var(--neon-pink);">⚡ MODE MINIMARKER AUTO SYNC AKTIF</div>
+      <div class="card-sub" style="color:#f8fafc;">Unggah DXF &amp; Excel BOM di bawah — sistem otomatis memetakan seluruh Colorway dan menyimpannya ke folder Order No!</div>
+      <button type="button" class="btn btn-pink" style="margin-top:8px; padding:10px;" onclick="runAutoSyncNow()">🚀 JALANKAN AUTO SYNC SEKARANG</button>
+    </div>
+
+    <div class="tabs">
+      <button id="tabUpload" class="tab-btn active" onclick="switchTab('upload')">📤 Upload &amp; Proses</button>
+      <button id="tabManual" class="tab-btn" onclick="switchTab('manual')">🏷️ Luar Line &amp; Manual</button>
+    </div>
+
+    <div id="panelUpload">
+      <div class="card">
+        <div class="dropzone" id="dxfZone" onclick="document.getElementById('dxfInput').click()">
+          <input type="file" id="dxfInput" accept=".dxf" class="hidden" onchange="handleDxfUpload(event)" />
+          <div id="dxfStatus" style="font-size:13px; font-weight:700;">📐 Ketuk untuk Unggah File Pola (.DXF)</div>
         </div>
-        <div>
-          <label style="font-size:11px; color:var(--muted);">Ukuran Font (Judul / Label):</label>
-          <div style="display:flex; gap:4px;">
-            <input type="number" id="titleFontSize" value="38" min="20" max="60" style="margin-bottom:6px;" title="Font Judul" />
-            <input type="number" id="labelFontSize" value="14" min="9" max="24" style="margin-bottom:6px;" title="Font Komponen" />
+        <div class="dropzone" id="excelZone" onclick="document.getElementById('excelInput').click()">
+          <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)" />
+          <div id="excelStatus" style="font-size:13px; font-weight:700;">📊 Ketuk untuk Unggah BOM Excel (.XLSX/.CSV)</div>
+        </div>
+        <div id="colorwayBox" class="hidden">
+          <label style="font-size:11px; color:var(--neon-cyan); font-weight:700;">PILIH COLORWAY:</label>
+          <select id="colorwaySelect" onchange="applyColorwayMapping()"></select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label style="font-size:11px; color:var(--muted);">STYLE NO:</label>
+            <input type="text" id="styleNoInput" placeholder="JS0A47JK" />
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted);">ORDER NO:</label>
+            <input type="text" id="orderNoInput" placeholder="KT26JN022" />
           </div>
         </div>
-        <div>
-          <label style="font-size:11px; color:var(--muted);">Jumlah Kolom / Lembar:</label>
-          <select id="colsSelect" style="margin-bottom:0;">
-            <option value="auto">Otomatis</option>
-            <option value="4">4 Kolom</option>
-            <option value="5">5 Kolom</option>
-            <option value="6">6 Kolom</option>
-            <option value="7">7 Kolom</option>
-            <option value="8">8 Kolom</option>
-          </select>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">🎛️ Pengaturan Font &amp; Grid A4</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label style="font-size:11px; color:var(--muted);">JENIS FONT:</label>
+            <select id="fontFamilySelect">
+              <option value='"Times New Roman", serif'>Times New Roman</option>
+              <option value='Arial, Helvetica, sans-serif'>Arial (Sans-Serif)</option>
+              <option value='"Courier New", monospace'>Courier (Monospace)</option>
+              <option value='Georgia, serif'>Georgia</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted);">UKURAN (JUDUL / LABEL):</label>
+            <div style="display:flex; gap:4px;">
+              <input type="number" id="titleFontSize" value="38" min="20" max="60" />
+              <input type="number" id="labelFontSize" value="14" min="9" max="24" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted);">KOLOM / LEMBAR:</label>
+            <select id="colsSelect">
+              <option value="auto">Otomatis</option>
+              <option value="4">4 Kolom</option>
+              <option value="5">5 Kolom</option>
+              <option value="6">6 Kolom</option>
+              <option value="7">7 Kolom</option>
+              <option value="8">8 Kolom</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted);">BARIS / LEMBAR:</label>
+            <select id="rowsSelect">
+              <option value="auto">Otomatis</option>
+              <option value="2">2 Baris</option>
+              <option value="3">3 Baris</option>
+              <option value="4">4 Baris</option>
+              <option value="5">5 Baris</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label style="font-size:11px; color:var(--muted);">Jumlah Baris / Lembar:</label>
-          <select id="rowsSelect" style="margin-bottom:0;">
-            <option value="auto">Otomatis</option>
-            <option value="2">2 Baris</option>
-            <option value="3">3 Baris</option>
-            <option value="4">4 Baris</option>
-            <option value="5">5 Baris</option>
-          </select>
+      </div>
+
+      <button class="btn" style="margin-bottom:8px;" onclick="generateMiniMarker()">🔥 BUAT MINI MARKER</button>
+      <button class="btn btn-secondary" style="margin-bottom:12px;" onclick="loadSampleData()">✨ COBA CONTOH POLA</button>
+
+      <div id="resultArea" class="card hidden" style="border-color:var(--neon-pink);">
+        <div id="cwSwipeBar" class="hidden" style="display:flex; align-items:center; justify-content:space-between; background:#090814; padding:8px 10px; border-radius:10px; margin-bottom:8px; border:1px solid var(--neon-cyan);">
+          <button type="button" onclick="navigateColorway(-1)" style="background:var(--card); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">◀</button>
+          <div id="cwSwipeLabel" style="font-size:11px; font-weight:800; color:var(--neon-yellow);">Colorway 1/1</div>
+          <button type="button" onclick="navigateColorway(1)" style="background:var(--card); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">▶</button>
         </div>
+        <button type="button" class="btn btn-pink" style="margin-bottom:8px;" onclick="openFullPreview()">⛶ PREVIEW 1 LAYAR PENUH</button>
+        <div id="previewViewport" style="width:100%; overflow:hidden; background:#05040a; border:1.5px solid var(--neon-purple); border-radius:10px; margin-bottom:10px;">
+          <div id="markerContainer" style="width:100%;"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+          <button class="btn" onclick="exportAllPDF()">📄 DOWNLOAD PDF</button>
+          <button class="btn btn-secondary" onclick="exportAllPNG()">🖼️ DOWNLOAD PNG</button>
+        </div>
+        <button class="btn btn-pink" onclick="saveAllColorwaysBatch()">📁 SAVE SEMUA COLORWAY (ORDER NO)</button>
+      </div>
+      <div class="card">
+        <div class="card-row" style="margin-bottom:8px;">
+          <div class="card-title">💾 Riwayat &amp; Backup JSON</div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" onclick="backupData()" style="background:rgba(0,245,212,0.15); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:5px 9px; font-size:11px; font-weight:800;">⬇️ BACKUP</button>
+            <button type="button" onclick="document.getElementById('restoreInput').click()" style="background:rgba(255,0,127,0.15); color:var(--neon-pink); border:1px solid var(--neon-pink); border-radius:8px; padding:5px 9px; font-size:11px; font-weight:800;">⬆️ RESTORE</button>
+            <input type="file" id="restoreInput" accept=".json,.zip" class="hidden" onchange="restoreData(event)" />
+          </div>
+        </div>
+        <div id="historyList"></div>
+      </div>
+    </div>
 
-      
+    <div id="panelManual" class="hidden">
+      <div id="dynamicProcessColorsBox" class="card" style="border-color:var(--neon-pink); margin-bottom:12px;">
+        <div class="card-title" style="color:var(--neon-pink);">🏷️ LUAR LINE</div>
+        <div class="card-sub" style="margin-bottom:8px;">Proses luar line terdeteksi dari DXF (dipisah tanda "-"). Atur warna (dilarang hitam):</div>
+        <div id="dynamicProcessColors" style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card-sub">Klik "Buat Mini Marker" terlebih dahulu untuk memunculkan proses.</div>
+        </div>
       </div>
-      </div>
-    </div>
-    <button class="btn" onclick="generateMiniMarker()">Buat Mini Marker</button>
-    <button class="btn btn-secondary" onclick="loadSampleData()">✨ Coba Contoh: Tas Ransel JS0A47JK</button>
-  </div>
-  <div id="panelManual" class="hidden">
-    <div id="dynamicProcessColorsBox" class="card" style="border-color:#2563eb; margin-bottom:12px;">
-      <div class="card-title" style="color:#38bdf8; letter-spacing:0.5px;">🏷️ LUAR LINE</div>
-      <div class="card-sub" style="margin-bottom:8px;">Daftar proses luar line yang terbaca (dipisah tanda "-"). Pilih warna (dilarang hitam):</div>
-      <div id="dynamicProcessColors" style="display:flex; flex-direction:column; gap:8px;">
-        <div class="card-sub">Klik "Buat Mini Marker" terlebih dahulu untuk memunculkan daftar proses.</div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">Pemetaan Piece ke Fabric</div>
-      <div class="card-sub">Ubah kode fabric jika format label DXF berbeda dari Excel:</div>
-      <div id="pieceMappingList" style="margin-top:10px; max-height:280px; overflow-y:auto;">
-        <div class="card-sub">Belum ada file DXF yang dimuat.</div>
-      </div>
-    </div>
-    
-    
-    <button class="btn" onclick="generateMiniMarker()">Terapkan &amp; Buat Mini Marker</button>
-  </div>
 
-  <div id="resultArea" class="hidden">
-    <div class="section-title">Hasil Mini Marker per Fabric</div>
-    
-    <div id="cwSwipeBar" class="hidden" style="display:flex; align-items:center; justify-content:space-between; background:#1e293b; padding:8px 12px; border-radius:10px; margin-bottom:8px; border:1px solid #334155;">
-      <button type="button" onclick="navigateColorway(-1)" style="background:#0f172a; color:#f1f5f9; border:1px solid #334155; border-radius:8px; padding:6px 12px; font-weight:bold; cursor:pointer;">◀</button>
-      <div id="cwSwipeLabel" style="font-size:12px; font-weight:600; text-align:center; color:#38bdf8;">Colorway 1 / 1</div>
-      <button type="button" onclick="navigateColorway(1)" style="background:#0f172a; color:#f1f5f9; border:1px solid #334155; border-radius:8px; padding:6px 12px; font-weight:bold; cursor:pointer;">▶</button>
-    </div>
-    
-    <div style="display:flex; gap:6px; justify-content:space-between; margin-bottom:8px;">
-      <button type="button" onclick="adjustPreviewZoom(-0.3)" style="flex:1; background:#1e293b; color:#f1f5f9; border:1px solid #334155; border-radius:8px; padding:7px; font-size:12px; font-weight:600;">🔍 -</button>
-      <button type="button" onclick="resetPreviewTransform()" style="flex:1.2; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:7px; font-size:12px; font-weight:600;" id="zoomLevelLabel">100% (Reset)</button>
-      <button type="button" onclick="adjustPreviewZoom(0.3)" style="flex:1; background:#1e293b; color:#f1f5f9; border:1px solid #334155; border-radius:8px; padding:7px; font-size:12px; font-weight:600;">🔍 +</button>
-      <button type="button" onclick="rotatePreviewCanvas()" style="flex:1.3; background:#1e293b; color:#10b981; border:1px solid #334155; border-radius:8px; padding:7px; font-size:12px; font-weight:600;">🔄 Rotate</button>
-    </div>
-    <button type="button" class="btn" style="background:#0284c7; padding:8px; font-size:13px; margin-bottom:8px;" onclick="openFullPreview()">⛶ Buka Preview 1 Layar Penuh</button>
-    <div id="previewViewport" style="width:100%; overflow:hidden; background:#0f172a; border:1px solid #334155; border-radius:10px; position:relative; touch-action:none; min-height:240px; display:flex; align-items:center; justify-content:center;">
-      <div id="markerContainer" style="transform-origin: center center; transition: transform 0.12s ease-out; width:100%;"></div>
-    </div>
-    <div class="grid-2">
-      <button class="btn" onclick="exportAllPDF()">📥 Download PDF</button>
-      <button class="btn btn-secondary" onclick="exportAllPNG()">🖼️ Download PNG</button>
-    </div>
-    <button class="btn" style="background:#059669; margin-top:8px;" onclick="saveAllColorwaysBatch()">📁 Save Semua Colorway (Folder Order No)</button>
-    <div class="hidden">
+      <div class="card">
+        <div class="card-title">✏️ Edit Nama Pattern &amp; Fabric</div>
+        <div id="pieceMappingList" style="margin-top:10px; max-height:320px; overflow-y:auto;">
+          <div class="card-sub">Belum ada file DXF yang dimuat.</div>
+        </div>
+      </div>
+      <button class="btn" onclick="generateMiniMarker()">🔥 TERAPKAN &amp; BUAT MINI MARKER</button>
     </div>
   </div>
 
-  <div class="section-title">Mini Marker Terbaru</div>
-  <div id="historyList"></div>
-
-  <div class="card" style="margin-top:16px;">
-    <div class="card-title">💾 Data tersimpan di HP ini (tanpa internet)</div>
-    <div class="card-sub">Simpan backup secara berkala — jika data aplikasi dihapus, marker bisa dipulihkan dari file backup.</div>
-    <div class="grid-2">
-      <button class="btn btn-secondary" style="margin:0;" onclick="backupData()">Backup</button>
-      <button class="btn btn-secondary" style="margin:0;" onclick="document.getElementById('restoreInput').click()">Restore</button>
-      <input type="file" id="restoreInput" accept=".json,.zip" class="hidden" onchange="restoreData(event)" />
-    </div>
-  </div>
-
-  
-  <div id="fullScreenModal" class="hidden" style="position:fixed; inset:0; z-index:9999; background:#050811; display:none; flex-direction:column;">
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#0f172a; border-bottom:1px solid #1e293b; gap:6px;">
-      <button type="button" onclick="navigateColorway(-1)" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:8px; padding:6px 12px; font-weight:bold;">◀</button>
-      <div id="fsColorwayTitle" style="flex:1; text-align:center; font-size:12px; font-weight:600; color:#38bdf8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Colorway</div>
-      <button type="button" onclick="navigateColorway(1)" style="background:#1e293b; color:#fff; border:1px solid #334155; border-radius:8px; padding:6px 12px; font-weight:bold;">▶</button>
-      <button type="button" onclick="closeFullPreview()" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:bold;">✕ Tutup</button>
+  <!-- MODAL 1 LAYAR PENUH -->
+  <div id="fullScreenModal" class="hidden" style="position:fixed; inset:0; z-index:9999; background:#05040a; display:none; flex-direction:column;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#110f21; border-bottom:1.5px solid var(--neon-cyan); gap:6px;">
+      <button type="button" onclick="navigateColorway(-1)" style="background:#07060e; color:var(--neon-cyan); border:1.5px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">◀</button>
+      <div id="fsColorwayTitle" style="flex:1; text-align:center; font-size:12px; font-weight:800; color:var(--neon-yellow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Colorway</div>
+      <button type="button" onclick="navigateColorway(1)" style="background:#07060e; color:var(--neon-cyan); border:1.5px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">▶</button>
+      <button type="button" onclick="closeFullPreview()" style="background:var(--neon-pink); color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:900;">✕ TUTUP</button>
     </div>
     <div id="fsViewport" style="flex:1; width:100%; height:100%; overflow:hidden; position:relative; touch-action:none; display:flex; align-items:center; justify-content:center;">
       <div id="fsCanvasHolder" style="transform-origin:center center; transition:transform 0.1s ease-out; display:flex; align-items:center; justify-content:center;"></div>
     </div>
-    <div style="display:flex; gap:6px; padding:10px 12px; background:#0f172a; border-top:1px solid #1e293b;">
-      <button type="button" onclick="fsZoom(-0.4)" style="flex:1; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:8px; padding:9px; font-weight:bold;">🔍 -</button>
-      <button type="button" onclick="fsReset()" id="fsZoomText" style="flex:1.2; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:9px; font-weight:bold;">100%</button>
-      <button type="button" onclick="fsZoom(0.4)" style="flex:1; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:8px; padding:9px; font-weight:bold;">🔍 +</button>
-      <button type="button" onclick="fsRotate()" style="flex:1.3; background:#059669; color:#fff; border:none; border-radius:8px; padding:9px; font-weight:bold;">🔄 Rotate</button>
+    <div style="display:flex; gap:6px; padding:10px 12px; background:#110f21; border-top:1.5px solid var(--neon-pink);">
+      <button type="button" onclick="fsZoom(-0.4)" style="flex:1; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:9px; font-weight:900;">🔍 -</button>
+      <button type="button" onclick="fsReset()" id="fsZoomText" style="flex:1.2; background:#07060e; color:var(--neon-yellow); border:1px solid var(--neon-yellow); border-radius:8px; padding:9px; font-weight:900;">100%</button>
+      <button type="button" onclick="fsZoom(0.4)" style="flex:1; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:9px; font-weight:900;">🔍 +</button>
+      <button type="button" onclick="fsRotate()" style="flex:1.3; background:var(--neon-pink); color:#fff; border:none; border-radius:8px; padding:9px; font-weight:900;">🔄 ROTATE</button>
     </div>
   </div>
   <script src="app.js"></script>
