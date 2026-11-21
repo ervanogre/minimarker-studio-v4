@@ -22,7 +22,7 @@ jobs:
         run: |
           npm install
           mkdir -p www/libs
-          cp node_modules/dxf-parser/dist/*.js www/libs/
+          cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
           cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
           cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
           cp node_modules/jszip/dist/jszip.min.js www/libs/
