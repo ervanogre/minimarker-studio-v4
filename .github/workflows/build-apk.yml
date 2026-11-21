@@ -11,16 +11,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
       - name: Install & Copy Offline Libs
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android dxf-parser xlsx jspdf jszip
+          npm install
           mkdir -p www/libs
-          cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
+          cp node_modules/dxf-parser/dist/*.js www/libs/
           cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
           cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
           cp node_modules/jszip/dist/jszip.min.js www/libs/
