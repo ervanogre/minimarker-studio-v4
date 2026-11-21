@@ -728,31 +728,70 @@ function generateMiniMarker() {
   updateSwipeBarUI();
   openFullPreview();
 }
-function exportAllPDF() {
-  if (generatedCanvases.length === 0) return;
+async function saveFileUniversal(fileName, blobOrDataUrl, isDataUrl = false) {
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    try {
+      const { Filesystem } = window.Capacitor.Plugins;
+      let base64Data = "";
+      if (isDataUrl) {
+        base64Data = blobOrDataUrl.split(",")[1];
+      } else {
+        base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(blobOrDataUrl);
+        });
+      }
+      await Filesystem.writeFile({
+        path: "Download/" + fileName,
+        data: base64Data,
+        directory: "EXTERNAL_STORAGE",
+        recursive: true
+      });
+      return "Download/" + fileName;
+    } catch (err) {
+      alert("Gagal menyimpan ke folder Download HP: " + err.message);
+      return null;
+    }
+  } else {
+    const link = document.createElement("a");
+    link.download = fileName;
+    link.href = isDataUrl ? blobOrDataUrl : URL.createObjectURL(blobOrDataUrl);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return fileName;
+  }
+}
+
+async function exportAllPDF() {
+  if (generatedCanvases.length === 0) { alert("Belum ada preview marker yang dibuat!"); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   generatedCanvases.forEach((c, i) => {
     if (i > 0) doc.addPage();
     doc.addImage(c.toDataURL('image/png'), 'PNG', 5, 5, 287, 200);
   });
-  doc.save('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/\s+/g, '_') + '.pdf');
+  const fileName = 'MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf';
+  const saved = await saveFileUniversal(fileName, doc.output('blob'), false);
+  if (saved) alert("✅ PDF berhasil disimpan ke: " + saved);
 }
 
-function exportAllPNG() {
-  if (generatedCanvases.length === 0) return;
-  generatedCanvases.forEach((c, i) => {
-    const link = document.createElement('a');
-    link.download = 'MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/\s+/g, '_') + (generatedCanvases.length > 1 ? '_Hal' + (i + 1) : '') + '.png';
-    link.href = c.toDataURL('image/png');
-    link.click();
-  });
+async function exportAllPNG() {
+  if (generatedCanvases.length === 0) { alert("Belum ada preview marker yang dibuat!"); return; }
+  let lastSaved = null;
+  for (let i = 0; i < generatedCanvases.length; i++) {
+    const fileName = 'MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + (generatedCanvases.length > 1 ? '_Hal' + (i + 1) : '') + '.png';
+    lastSaved = await saveFileUniversal(fileName, generatedCanvases[i].toDataURL('image/png'), true);
+  }
+  if (lastSaved) alert("✅ " + generatedCanvases.length + " file PNG berhasil disimpan ke folder Download!");
 }
 
 async function saveAllColorwaysBatch() {
-  if (parsedPieces.length === 0) { alert("Belum ada pola DXF yang dimuat."); return; }
+  if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) { alert("Belum ada pola DXF yang dimuat."); return; }
   const orderNo = (document.getElementById('orderNoInput')?.value || currentStyleName || 'ORDER_MARKER').trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '_');
-  const cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+  const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
   const targetKeys = cwKeys.length > 0 ? cwKeys : [currentColorwayName];
   const { jsPDF } = window.jspdf;
 
@@ -767,11 +806,8 @@ async function saveAllColorwaysBatch() {
   }
   closeFullPreview();
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  const link = document.createElement('a');
-  link.download = orderNo + '.zip';
-  link.href = URL.createObjectURL(zipBlob);
-  link.click();
-  alert('Selesai! ' + targetKeys.length + ' Colorway disimpan dalam folder "' + orderNo + '" (' + orderNo + '.zip).');
+  const saved = await saveFileUniversal(orderNo + '.zip', zipBlob, false);
+  if (saved) alert("✅ Selesai! " + targetKeys.length + " Colorway disimpan ke: " + saved);
 }
 
 function loadSampleData() {
@@ -958,7 +994,11 @@ function openToolMode(mode) {
     if (resultArea && typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0) {
       resultArea.classList.remove('hidden');
     }
+    const btnMenu2 = document.getElementById('btnGoToMenu2');
+    if (btnMenu2) btnMenu2.classList.add('hidden');
   } else {
+    const btnMenu2 = document.getElementById('btnGoToMenu2');
+    if (btnMenu2) btnMenu2.classList.remove('hidden');
     if (banner) banner.classList.add('hidden');
     if (tabsBar) tabsBar.classList.remove('hidden');
     if (floatingBar) floatingBar.style.display = 'flex';
