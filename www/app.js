@@ -346,6 +346,37 @@ function applyColorwayMapping() {
   renderPieceMappingList();
   renderDynamicProcessColors();
 }
+function updateCustomProcess(idx, rawVal, doRender) {
+  const cleanVal = String(rawVal || "").toUpperCase();
+  if (parsedPieces.at(idx)) {
+    parsedPieces.at(idx).processLabel = cleanVal;
+  }
+  if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList) && colorwayList.at(activeColorwayIdx)?.pieces?.at(idx)) {
+    colorwayList.at(activeColorwayIdx).pieces.at(idx).processLabel = cleanVal;
+  }
+  renderDynamicProcessColors();
+  if (doRender && typeof generateMiniMarker === "function") {
+    generateMiniMarker();
+  }
+}
+
+function handleProcessDropdownChange(idx, val) {
+  const wrap = document.getElementById(`customProcWrap_${idx}`);
+  const inp = document.getElementById(`customProcInp_${idx}`);
+  if (val === "__CUSTOM__") {
+    if (wrap) wrap.style.display = "flex";
+    if (inp) {
+      parsedPieces.at(idx).processLabel = inp.value.toUpperCase();
+      inp.focus();
+    }
+  } else {
+    if (wrap) wrap.style.display = "none";
+    updateCustomProcess(idx, val, true);
+    return;
+  }
+  renderDynamicProcessColors();
+}
+
 function renderPieceMappingList() {
   const container = document.getElementById('pieceMappingList');
   if (!container || parsedPieces.length === 0) return;
@@ -353,7 +384,9 @@ function renderPieceMappingList() {
   const processes = ['', 'OCM', 'BORDIR', 'AUTOMATION-OCM', 'OCM-BORDIR', 'AUTOMATION', 'HEAT EMBOSSED', 'SILKSCREEN'];
   const qtys = ['', 'A/B', 'Ax2 Bx2', 'X2', 'X3', 'X4', 'X6'];
 
-  container.innerHTML = parsedPieces.map((p, idx) => `
+  container.innerHTML = parsedPieces.map((p, idx) => {
+    const isCustomProc = Boolean(p.processLabel && !processes.includes(p.processLabel));
+    return `
     <div class="piece-item" style="flex-direction:column; align-items:stretch; gap:6px; padding:8px 0;">
       <div style="display:flex; gap:6px; align-items:center;">
         <input type="text" value="${p.name.replace(/"/g, '&quot;')}" onchange="parsedPieces.at(${idx}).name = this.value.toUpperCase()" placeholder="Nama Pattern" style="flex:2; margin:0; padding:6px 8px; font-size:12px; font-weight:600;" />
@@ -366,12 +399,17 @@ function renderPieceMappingList() {
         <select onchange="parsedPieces.at(${idx}).qtyLabel = this.value" style="flex:1;">
           ${qtys.map(q => `<option value="${q}" ${p.qtyLabel === q ? 'selected' : ''}>${q || '1x'}</option>`).join('')}
         </select>
-        <select onchange="parsedPieces.at(${idx}).processLabel = this.value; renderDynamicProcessColors();" style="flex:1.4;">
-          ${processes.map(pr => `<option value="${pr}" ${p.processLabel === pr ? 'selected' : ''}>${pr || 'Proses-'}</option>`).join('')}
+        <select onchange="handleProcessDropdownChange(${idx}, this.value)" style="flex:1.4;">
+          ${processes.map(pr => `<option value="${pr}" ${!isCustomProc && p.processLabel === pr ? 'selected' : ''}>${pr || 'Proses-'}</option>`).join('')}
+          <option value="__CUSTOM__" ${isCustomProc ? 'selected' : ''}>✏️ Tulis Manual...</option>
         </select>
       </div>
+      <div id="customProcWrap_${idx}" style="display:${isCustomProc ? 'flex' : 'none'}; gap:6px; align-items:center;">
+        <input type="text" id="customProcInp_${idx}" value="${isCustomProc ? p.processLabel.replace(/"/g, '&quot;') : ''}" oninput="updateCustomProcess(${idx}, this.value, false)" onchange="updateCustomProcess(${idx}, this.value, true)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();updateCustomProcess(${idx}, this.value, true);}" placeholder="Ketik nama proses manual (misal: EMBOSS-LOGO)..." style="flex:1; margin:0; padding:6px 8px; font-size:12px; border:1px solid var(--neon-pink); color:var(--neon-yellow); font-weight:700;" />
+      </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function getSavedProcessColors() {
@@ -1242,3 +1280,32 @@ function matchSpreadWithBomFA(spreadMap) {
   }
   return Object.keys(excelColorways).length > 0;
 }
+
+
+// Auto-update saat Pengaturan Font & Grid A4 dipilih atau setelah tekan Enter
+function triggerLiveFontGridUpdate() {
+  if (typeof saveLayoutPreferences === "function") saveLayoutPreferences(false);
+  if (typeof generateMiniMarker === "function") generateMiniMarker();
+}
+
+window.addEventListener("DOMContentLoaded", function() {
+  // Dropdown langsung berubah saat opsi dipilih
+  ["fontFamilySelect", "colsSelect", "rowsSelect"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", triggerLiveFontGridUpdate);
+  });
+
+  // Input angka ukuran font baru berubah setelah tekan Enter (atau selesai edit)
+  ["titleFontSize", "labelFontSize"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        el.blur();
+        triggerLiveFontGridUpdate();
+      }
+    });
+    el.addEventListener("change", triggerLiveFontGridUpdate);
+  });
+});
