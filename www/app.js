@@ -1,3 +1,18 @@
+// === AUTO REQUEST STORAGE PERMISSION ===
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+      const { Filesystem } = window.Capacitor.Plugins;
+      const status = await Filesystem.checkPermissions();
+      if (status.publicStorage !== "granted") {
+        await Filesystem.requestPermissions();
+      }
+    }
+  } catch (e) {
+    console.log("Info izin penyimpanan:", e);
+  }
+});
+
 function appendSyncLog(msg) { console.log("[SYNC LOG]:", msg); }
 let parsedPieces = [];
 let excelColorways = {};
