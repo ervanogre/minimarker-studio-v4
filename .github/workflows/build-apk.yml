@@ -1,0 +1,40 @@
+name: Build MiniMarker Studio V4 APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Install & Copy Offline Libs
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android dxf-parser xlsx jspdf jszip
+          mkdir -p www/libs
+          cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
+          cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
+          cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
+          cp node_modules/jszip/dist/jszip.min.js www/libs/
+      - name: Build Android Project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MiniMarker-Studio-V4.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniMarker-Studio-V4
+          path: android/app/build/outputs/apk/debug/MiniMarker-Studio-V4.apk

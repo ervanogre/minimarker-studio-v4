@@ -1,0 +1,6 @@
+{
+  "appId": "com.minimarker.studio.v4",
+  "appName": "MiniMarker Studio V4",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
