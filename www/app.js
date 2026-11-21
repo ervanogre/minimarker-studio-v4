@@ -360,6 +360,30 @@ function updateCustomProcess(idx, rawVal, doRender) {
   }
 }
 
+function updateCustomQty(idx, rawVal, doRender) {
+  const cleanVal = String(rawVal || "").trim();
+  if (parsedPieces.at(idx)) parsedPieces.at(idx).qtyLabel = cleanVal;
+  if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList) && colorwayList.at(activeColorwayIdx)?.pieces?.at(idx)) {
+    colorwayList.at(activeColorwayIdx).pieces.at(idx).qtyLabel = cleanVal;
+  }
+  if (doRender && typeof generateMiniMarker === "function") generateMiniMarker();
+}
+
+function handleQtyDropdownChange(idx, val) {
+  const wrap = document.getElementById(`customQtyWrap_${idx}`);
+  const inp = document.getElementById(`customQtyInp_${idx}`);
+  if (val === "__CUSTOM_QTY__") {
+    if (wrap) wrap.style.display = "flex";
+    if (inp) {
+      updateCustomQty(idx, inp.value, false);
+      inp.focus();
+    }
+  } else {
+    if (wrap) wrap.style.display = "none";
+    updateCustomQty(idx, val, true);
+  }
+}
+
 function handleProcessDropdownChange(idx, val) {
   const wrap = document.getElementById(`customProcWrap_${idx}`);
   const inp = document.getElementById(`customProcInp_${idx}`);
@@ -386,6 +410,7 @@ function renderPieceMappingList() {
 
   container.innerHTML = parsedPieces.map((p, idx) => {
     const isCustomProc = Boolean(p.processLabel && !processes.includes(p.processLabel));
+    const isCustomQty = Boolean(p.qtyLabel && !qtys.includes(p.qtyLabel));
     return `
     <div class="piece-item" style="flex-direction:column; align-items:stretch; gap:6px; padding:8px 0;">
       <div style="display:flex; gap:6px; align-items:center;">
@@ -396,13 +421,17 @@ function renderPieceMappingList() {
         <select onchange="parsedPieces.at(${idx}).fabric = this.value" style="flex:1;">
           ${fabrics.map(f => `<option value="${f}" ${p.fabric === f ? 'selected' : ''}>${f}</option>`).join('')}
         </select>
-        <select onchange="parsedPieces.at(${idx}).qtyLabel = this.value" style="flex:1;">
-          ${qtys.map(q => `<option value="${q}" ${p.qtyLabel === q ? 'selected' : ''}>${q || '1x'}</option>`).join('')}
+        <select onchange="handleQtyDropdownChange(${idx}, this.value)" style="flex:1;">
+          ${qtys.map(q => `<option value="${q}" ${!isCustomQty && p.qtyLabel === q ? 'selected' : ''}>${q || '1x'}</option>`).join('')}
+          <option value="__CUSTOM_QTY__" ${isCustomQty ? 'selected' : ''}>✏️ Manual...</option>
         </select>
         <select onchange="handleProcessDropdownChange(${idx}, this.value)" style="flex:1.4;">
           ${processes.map(pr => `<option value="${pr}" ${!isCustomProc && p.processLabel === pr ? 'selected' : ''}>${pr || 'Proses-'}</option>`).join('')}
           <option value="__CUSTOM__" ${isCustomProc ? 'selected' : ''}>✏️ Tulis Manual...</option>
         </select>
+      </div>
+      <div id="customQtyWrap_${idx}" style="display:${isCustomQty ? 'flex' : 'none'}; gap:6px; align-items:center;">
+        <input type="text" id="customQtyInp_${idx}" value="${isCustomQty ? p.qtyLabel.replace(/"/g, '&quot;') : ''}" oninput="updateCustomQty(${idx}, this.value, false)" onchange="updateCustomQty(${idx}, this.value, true)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();updateCustomQty(${idx}, this.value, true);}" placeholder="Ketik Qty/Pair manual (misal: X8, A/B/C)..." style="flex:1; margin:0; padding:6px 8px; font-size:12px; border:1px solid var(--neon-cyan); color:var(--neon-cyan); font-weight:700;" />
       </div>
       <div id="customProcWrap_${idx}" style="display:${isCustomProc ? 'flex' : 'none'}; gap:6px; align-items:center;">
         <input type="text" id="customProcInp_${idx}" value="${isCustomProc ? p.processLabel.replace(/"/g, '&quot;') : ''}" oninput="updateCustomProcess(${idx}, this.value, false)" onchange="updateCustomProcess(${idx}, this.value, true)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();updateCustomProcess(${idx}, this.value, true);}" placeholder="Ketik nama proses manual (misal: EMBOSS-LOGO)..." style="flex:1; margin:0; padding:6px 8px; font-size:12px; border:1px solid var(--neon-pink); color:var(--neon-yellow); font-weight:700;" />
@@ -596,6 +625,19 @@ function generateMiniMarker() {
     canvas.width = 1754;
     canvas.height = 1240;
     canvas.style.marginBottom = '12px';
+    canvas.style.cursor = 'pointer';
+    canvas.title = 'Ketuk pola untuk mengedit tulisannya';
+    canvas._hitBoxes = new Array();
+    canvas.addEventListener('click', function(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = (ev.clientX - rect.left) * (canvas.width / rect.width);
+      const clickY = (ev.clientY - rect.top) * (canvas.height / rect.height);
+      const hit = canvas._hitBoxes.find(b => clickX >= b.x && clickX <= b.x + b.w && clickY >= b.y && clickY <= b.y + b.h);
+      if (hit && typeof openQuickPatternEditor === "function") {
+        ev.stopPropagation();
+        openQuickPatternEditor(hit.piece);
+      }
+    });
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -630,6 +672,7 @@ function generateMiniMarker() {
     pagePieces.forEach((piece, idx) => {
       const col = Math.floor(idx / actualRows), row = idx % actualRows;
       const cx = boxX + 12 + col * cellW, cy = boxY + 10 + row * cellH;
+      canvas._hitBoxes.push({ x: cx, y: cy, w: cellW, h: cellH, piece });
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
 
       const circleR = Math.min(15, cellH * 0.082);
@@ -1309,3 +1352,84 @@ window.addEventListener("DOMContentLoaded", function() {
     el.addEventListener("change", triggerLiveFontGridUpdate);
   });
 });
+
+
+function openQuickPatternEditor(pieceObj) {
+  let idx = parsedPieces.indexOf(pieceObj);
+  if (idx === -1) {
+    idx = parsedPieces.findIndex(p => p.id === pieceObj.id && p.name === pieceObj.name);
+  }
+  if (idx === -1) return;
+  const p = parsedPieces.at(idx);
+  document.getElementById('qePieceIdx').value = idx;
+  document.getElementById('qeName').value = p.name || "";
+  document.getElementById('qeSize').value = p.sizeText || "";
+  document.getElementById('qeFabric').value = p.fabric || "MA";
+  document.getElementById('qeQty').value = p.qtyLabel || "";
+  document.getElementById('qeProc').value = p.processLabel || "";
+
+  const modal = document.getElementById('quickEditModal');
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('qeName').focus(), 50);
+}
+
+function closeQuickPatternEditor() {
+  const modal = document.getElementById('quickEditModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
+function saveQuickPatternEdit() {
+  const idx = parseInt(document.getElementById('qePieceIdx').value);
+  if (isNaN(idx) || !parsedPieces.at(idx)) return;
+  const p = parsedPieces.at(idx);
+  p.name = document.getElementById('qeName').value.trim().toUpperCase();
+  p.sizeText = document.getElementById('qeSize').value.trim();
+  p.fabric = document.getElementById('qeFabric').value;
+  p.qtyLabel = document.getElementById('qeQty').value;
+  p.processLabel = document.getElementById('qeProc').value.trim().toUpperCase();
+
+  if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList) && colorwayList.at(activeColorwayIdx)?.pieces?.at(idx)) {
+    const cp = colorwayList.at(activeColorwayIdx).pieces.at(idx);
+    cp.name = p.name;
+    cp.sizeText = p.sizeText;
+    cp.fabric = p.fabric;
+    cp.qtyLabel = p.qtyLabel;
+    cp.processLabel = p.processLabel;
+  }
+
+  closeQuickPatternEditor();
+  if (typeof renderPieceMappingList === "function") renderPieceMappingList();
+  if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+  if (typeof generateMiniMarker === "function") generateMiniMarker();
+}
+
+
+
+document.addEventListener("click", function(ev) {
+  const target = ev.target;
+  if (!target) return;
+  const fsContainer = target.closest("#fsCanvasHolder, #fullScreenModal");
+  if (!fsContainer || typeof generatedCanvases === "undefined" || generatedCanvases.length === 0) return;
+
+  const mediaEl = (target.tagName === "IMG" || target.tagName === "CANVAS") ? target : fsContainer.querySelector("img, canvas");
+  if (!mediaEl) return;
+
+  const allMedia = Array.from(fsContainer.querySelectorAll("img, canvas"));
+  const pageIdx = allMedia.indexOf(mediaEl);
+  const srcCanvas = generatedCanvases.at(pageIdx !== -1 ? pageIdx : 0);
+  if (!srcCanvas || !srcCanvas._hitBoxes) return;
+
+  const rect = mediaEl.getBoundingClientRect();
+  const clickX = (ev.clientX - rect.left) * (srcCanvas.width / rect.width);
+  const clickY = (ev.clientY - rect.top) * (srcCanvas.height / rect.height);
+  const hit = srcCanvas._hitBoxes.find(b => clickX >= b.x && clickX <= b.x + b.w && clickY >= b.y && clickY <= b.y + b.h);
+  if (hit && typeof openQuickPatternEditor === "function") {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openQuickPatternEditor(hit.piece);
+  }
+}, true);
