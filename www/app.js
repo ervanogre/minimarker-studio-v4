@@ -930,6 +930,10 @@ async function saveFileUniversal(fileName, blobOrDataUrl, isDataUrl = false) {
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
     try {
       const { Filesystem } = window.Capacitor.Plugins;
+      if (!Filesystem) {
+        alert("Plugin Filesystem belum aktif. Pastikan build APK terbaru.");
+        return null;
+      }
       let base64Data = "";
       if (isDataUrl) {
         base64Data = blobOrDataUrl.split(",")[1];
@@ -941,15 +945,25 @@ async function saveFileUniversal(fileName, blobOrDataUrl, isDataUrl = false) {
           reader.readAsDataURL(blobOrDataUrl);
         });
       }
-      await Filesystem.writeFile({
-        path: "Download/" + fileName,
-        data: base64Data,
-        directory: "EXTERNAL_STORAGE",
-        recursive: true
-      });
-      return "Download/" + fileName;
+      try {
+        await Filesystem.writeFile({
+          path: "Download/" + fileName,
+          data: base64Data,
+          directory: "EXTERNAL_STORAGE",
+          recursive: true
+        });
+        return "Internal Storage/Download/" + fileName;
+      } catch (e1) {
+        await Filesystem.writeFile({
+          path: "MiniMarker/" + fileName,
+          data: base64Data,
+          directory: "DOCUMENTS",
+          recursive: true
+        });
+        return "Internal Storage/Documents/MiniMarker/" + fileName;
+      }
     } catch (err) {
-      alert("Gagal menyimpan ke folder Download HP: " + err.message);
+      alert("Gagal menyimpan file: " + (err.message || err));
       return null;
     }
   } else {
@@ -1166,6 +1180,7 @@ let isAutoSyncMode = false;
 
 function openToolMode(mode) {
   isAutoSyncMode = (mode === 'autosync');
+  document.body.classList.toggle('autosync-active', isAutoSyncMode);
   document.getElementById('homeSplashScreen').classList.add('hidden');
   document.getElementById('mainAppScreen').classList.remove('hidden');
 
