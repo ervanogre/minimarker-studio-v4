@@ -1,5 +1,7 @@
+function appendSyncLog(msg) { console.log("[SYNC LOG]:", msg); }
 let parsedPieces = [];
 let excelColorways = {};
+let bomTemplates = {};
 let currentStyleName = "JS0A47JK";
 let currentColorwayName = "BUBBLE GUM A5Y";
 let generatedCanvases = [];
@@ -153,6 +155,39 @@ function extractPiecesFromDxf(dxf) {
   });
   return uniquePieces;
 }
+function matchSpreadWithBomFA(spreadMap) {
+  const allSpread = Object.values(spreadMap);
+  const bomEntries = Object.values(bomTemplates);
+  const paired = bomEntries.map(b => {
+    const m = allSpread.find(sp => b.cleanColor.includes(sp.cwCode) || b.sheetName.toUpperCase().includes('(' + sp.cwCode + ')'));
+    return { bom: b, cwCode: m ? m.cwCode : '', faMap: m ? m.faMap : {}, faList: m ? m.faList : [] };
+  });
+
+  excelColorways = {};
+  for (const [cwKey, sp] of Object.entries(spreadMap)) {
+    let chosen = paired.find(p => p.cwCode === sp.cwCode);
+    if (!chosen && paired.length > 0) {
+      let bestScore = Infinity;
+      paired.forEach(cand => {
+        if (cand.faList.length === 0) return;
+        const score = Math.abs((sp.faMap['MA'] || 0) - (cand.faMap['MA'] || 0)) * 3
+                    + Math.abs((sp.faMap['T1'] || 0) - (cand.faMap['T1'] || 0)) * 3
+                    + Math.abs((sp.faMap['L2'] || 0) - (cand.faMap['L2'] || 0))
+                    + Math.abs(sp.allowedFabrics.length - Object.keys(cand.faMap).length) * 0.05;
+        if (score < bestScore) { bestScore = score; chosen = cand; }
+      });
+    }
+    if (!chosen && bomEntries.length > 0) chosen = { bom: bomEntries.at(0), cwCode: 'DEFAULT' };
+    sp.pieces = chosen ? JSON.parse(JSON.stringify(chosen.bom.pieces)) : [{ fabric: 'MA', name: 'SPREAD_ONLY', raw: 'SPREAD_ONLY', codes: [], size: '0*0', qty: 1 }];
+    if (chosen && chosen.cwCode && chosen.cwCode !== sp.cwCode) {
+      sp.clonedFrom = chosen.cwCode;
+      sp.sheetName = sp.styleNo + ' | Tiru F/A: ' + chosen.cwCode;
+    }
+    excelColorways[cwKey] = sp;
+  }
+  return Object.keys(excelColorways).length > 0;
+}
+
 function handleExcelUpload(event) {
   const file = event.target.files && event.target.files.item(0);
   if (!file) return;
@@ -171,17 +206,18 @@ function handleExcelUpload(event) {
       });
       const cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
       if (cwKeys.length > 0) {
+        bomTemplates = JSON.parse(JSON.stringify(excelColorways));
         const sel = document.getElementById('colorwaySelect');
         sel.innerHTML = cwKeys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
         document.getElementById('colorwayBox').classList.remove('hidden');
         document.getElementById('excelZone').classList.add('loaded');
-        document.getElementById('excelStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Colorway siap)';
+        document.getElementById('excelStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Colorway BOM siap)';
         applyColorwayMapping();
       } else {
-        alert("Tidak ditemukan tabel komponen fabric pada file ini.");
+        alert("Tidak ditemukan tabel komponen fabric (VAI/FAB) pada file BOM ini.");
       }
     } catch (err) {
-      alert("Error membaca Excel: " + err.message);
+      alert("Error membaca Excel BOM: " + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -282,10 +318,11 @@ function applyColorwayMapping() {
       p.name = bestItem.name || p.name;
       p.sizeText = bestItem.size;
       if (bestItem.qty > 1) {
-        if (p.isPairAB || /SHOULDER|FRONT.*SIDE|ENDZIP/i.test(p.name)) {
+        if (p.isPairAB || /SHOULDER|FRONT.*SIDE|ENDZIP|GUSSET.*SIDE/i.test(p.name)) {
           p.isPairAB = true;
           p.qtyLabel = bestItem.qty >= 4 ? 'Ax2 Bx2' : 'A/B';
         } else {
+          p.isPairAB = false;
           p.qtyLabel = 'X' + bestItem.qty;
         }
       }
@@ -413,13 +450,57 @@ function generateMiniMarker() {
   });
 
   const totalAll = sortedPieces.length;
-  const cols = customCols !== 'auto' ? parseInt(customCols) : (totalAll <= 12 ? 6 : (totalAll <= 21 ? 7 : 8));
-  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : Math.ceil(totalAll / cols);
+  const sampleBoxW = 1754 - 72;
+  const sampleFooterH = 42 + (activeFabrics.length * Math.max(labelSize + 11, 24));
+  const sampleBoxH = 1240 - 76 - sampleFooterH - 22;
+
+  // Fungsi pembantu menghitung skor skala maksimal untuk kombinasi (c, r, pages)
+  function evaluateGrid(c, r, pg) {
+    if (c * r * pg < totalAll) return -1;
+    const cW = (sampleBoxW - 24) / c;
+    const cH = (sampleBoxH - 18) / r;
+    const circR = Math.min(14, cH * 0.075);
+    const mW = Math.max(cW - ((circR * 2) + 8) - 38, 20);
+    const mH = Math.max(cH - (labelSize + 8) - ((labelSize * 2) + 14), 20);
+    if (mW < 28 || mH < 24) return -1;
+
+    const scales = sortedPieces.map(p => {
+      const sideBySide = false;
+      const nW = sideBySide ? (p.width * 2 + 20) : p.width;
+      const sNorm = Math.min(mW / Math.max(nW, 1), mH / Math.max(p.height, 1));
+      const rW = sideBySide ? (p.height * 2 + 20) : p.height;
+      const sRot = Math.min(mW / Math.max(rW, 1), mH / Math.max(p.width, 1));
+      return Math.max(sNorm, sRot);
+    }).sort((a, b) => a - b);
+
+    // Gunakan persentil ke-15 terendah agar mayoritas komponen tampil maksimal
+    return scales[Math.floor(scales.length * 0.15)] || scales[0] || 0.1;
+  }
+
+  let cols = customCols !== 'auto' ? parseInt(customCols) : 6;
+  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : 4;
   let maxPages = 1;
-  if (customRows === 'auto' && totalAll > 28) {
-    maxPages = Math.min(3, Math.ceil(totalAll / 24));
-    rowsPerPage = Math.ceil(Math.ceil(totalAll / maxPages) / cols);
-  } else if (customRows !== 'auto') {
+
+  if (customCols === 'auto' && customRows === 'auto') {
+    let bestScore = -1;
+    const maxAllowedPages = totalAll <= 30 ? 1 : (totalAll <= 65 ? 2 : 3);
+    for (let pg = 1; pg <= maxAllowedPages; pg++) {
+      const targetPerPg = Math.ceil(totalAll / pg);
+      for (let c = 4; c <= 9; c++) {
+        const r = Math.ceil(targetPerPg / c);
+        if (r < 2 || r > 7) continue;
+        const sc = evaluateGrid(c, r, pg);
+        if (sc > bestScore) {
+          bestScore = sc;
+          cols = c;
+          rowsPerPage = r;
+          maxPages = pg;
+        }
+      }
+    }
+  } else {
+    if (customCols === 'auto') cols = Math.min(9, Math.max(4, Math.ceil(Math.sqrt(totalAll * 1.4))));
+    if (customRows === 'auto') rowsPerPage = Math.min(6, Math.max(2, Math.ceil(totalAll / cols)));
     maxPages = Math.min(3, Math.max(1, Math.ceil(totalAll / (cols * rowsPerPage))));
   }
 
@@ -429,9 +510,29 @@ function generateMiniMarker() {
     const slice = sortedPieces.slice(p * perPage, (p + 1) * perPage);
     if (slice.length > 0) pages.push(slice);
   }
-  if (sortedPieces.length > maxPages * perPage) {
-    pages[pages.length - 1] = pages[pages.length - 1].concat(sortedPieces.slice(maxPages * perPage));
-  }
+
+  const stdCellW = (sampleBoxW - 24) / cols;
+  const stdCellH = (sampleBoxH - 18) / Math.max(rowsPerPage, 1);
+  const stdCircleR = Math.min(14, stdCellH * 0.075);
+  const stdMaxW = Math.max(stdCellW - ((stdCircleR * 2) + 8) - 38, 24);
+  const stdMaxH = Math.max(stdCellH - (labelSize + 8) - ((labelSize * 2) + 14), 24);
+
+  const pieceScales = [];
+  sortedPieces.forEach(p => {
+    const sideBySide = false;
+    const normW = sideBySide ? (p.width * 2 + 20) : p.width;
+    const scaleNorm = Math.min(stdMaxW / Math.max(normW, 1), stdMaxH / Math.max(p.height, 1));
+    const rotW = sideBySide ? (p.height * 2 + 20) : p.height;
+    const scaleRot = Math.min(stdMaxW / Math.max(rotW, 1), stdMaxH / Math.max(p.width, 1));
+
+    p.autoRotate90 = scaleRot > scaleNorm * 1.03;
+    p.maxAllowedScale = p.autoRotate90 ? scaleRot : scaleNorm;
+    pieceScales.push(p.maxAllowedScale);
+  });
+
+  pieceScales.sort((a, b) => a - b);
+  let globalUniformScale = pieceScales[Math.floor(pieceScales.length * 0.15)] || pieceScales[0] || 0.25;
+  if (!isFinite(globalUniformScale) || globalUniformScale <= 0) globalUniformScale = 0.25;
 
   const container = document.getElementById('markerContainer');
   container.innerHTML = '';
@@ -449,8 +550,7 @@ function generateMiniMarker() {
     ctx.fillStyle = '#000000';
     ctx.font = 'bold ' + titleSize + 'px ' + fontFam;
     ctx.textAlign = 'center';
-    const pageSuffix = pages.length > 1 ? ' [HAL ' + (pageIdx + 1) + '/' + pages.length + ']' : '';
-    ctx.fillText(styleVal + ' (' + currentColorwayName + ')' + pageSuffix, canvas.width / 2, 48);
+    ctx.fillText(styleVal + ' (' + currentColorwayName + ')', canvas.width / 2, 48);
 
     const footerLineH = Math.max(labelSize + 11, 24);
     const footerH = 42 + (activeFabrics.length * footerLineH);
@@ -461,6 +561,11 @@ function generateMiniMarker() {
       ctx.textAlign = 'left';
       ctx.fillText(orderVal, boxX, boxY - 8);
     }
+    if (pages.length > 1) {
+      ctx.font = 'bold ' + (labelSize + 3) + 'px ' + fontFam;
+      ctx.textAlign = 'right';
+      ctx.fillText('HAL ' + (pageIdx + 1) + '/' + pages.length, boxX + boxW, boxY - 8);
+    }
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(boxX, boxY, boxW, boxH);
@@ -470,13 +575,31 @@ function generateMiniMarker() {
     const cellH = (boxH - 18) / actualRows;
 
     pagePieces.forEach((piece, idx) => {
-      const col = idx % cols, row = Math.floor(idx / cols);
+      const col = Math.floor(idx / actualRows), row = idx % actualRows;
       const cx = boxX + 12 + col * cellW, cy = boxY + 10 + row * cellH;
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
 
-      const circleR = Math.min(16, cellH * 0.085);
+      const circleR = Math.min(15, cellH * 0.082);
+      const topSpace = piece.processLabel ? (labelSize + 10) : 8;
+      const bottomSpace = (labelSize * 2) + 16;
+      const leftOffset = (circleR * 2) + 8;
+      const maxDrawW = Math.max(cellW - leftOffset - 44, 24);
+      const maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
+
+      const effW = piece.autoRotate90 ? piece.height : piece.width;
+      const effH = piece.autoRotate90 ? piece.width : piece.height;
+      const drawSideBySide = false;
+      const totalDrawW = drawSideBySide ? (effW * 2 + 25) : effW;
+      const pairScale = Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const finalW = totalDrawW * pairScale, finalH = effH * pairScale;
+      const finalX = cx + leftOffset + (maxDrawW - finalW) / 2;
+      const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
+      const centerDrawX = finalX + finalW / 2;
+
+      const numCx = Math.max(cx + circleR + 3, finalX - circleR - 5);
+      const numCy = Math.max(cy + circleR + 6, finalY + circleR);
       ctx.beginPath();
-      ctx.arc(cx + circleR + 4, cy + circleR + 12, circleR, 0, Math.PI * 2);
+      ctx.arc(numCx, numCy, circleR, 0, Math.PI * 2);
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1.8;
       ctx.stroke();
@@ -484,21 +607,7 @@ function generateMiniMarker() {
       const numScale = String(fabNum).length >= 4 ? 0.78 : 0.92;
       ctx.font = 'bold ' + Math.round(circleR * numScale) + 'px ' + fontFam;
       ctx.textAlign = 'center';
-      ctx.fillText(String(fabNum), cx + circleR + 4, cy + circleR + 12 + Math.round(circleR * 0.35));
-
-      const topSpace = piece.processLabel ? (labelSize + 10) : 8;
-      const bottomSpace = (labelSize * 2) + 16;
-      const leftOffset = (circleR * 2) + 12;
-      const maxDrawW = Math.max(cellW - leftOffset - 46, 24);
-      const maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
-
-      const drawSideBySide = piece.isPairAB && piece.height > piece.width * 1.4;
-      const totalDrawW = drawSideBySide ? (piece.width * 2 + 25) : piece.width;
-      const pairScale = Math.min(maxDrawW / Math.max(totalDrawW, 1), maxDrawH / Math.max(piece.height, 1));
-      const finalW = totalDrawW * pairScale, finalH = piece.height * pairScale;
-      const finalX = cx + leftOffset + (maxDrawW - finalW) / 2;
-      const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
-      const centerDrawX = finalX + finalW / 2;
+      ctx.fillText(String(fabNum), numCx, numCy + Math.round(circleR * 0.35));
 
       if (piece.processLabel) {
         const parts = piece.processLabel.toUpperCase().split('-').map(s => s.trim()).filter(Boolean);
@@ -521,13 +630,16 @@ function generateMiniMarker() {
         });
       }
 
-      const renderPolySet = (polyList, shiftX, mirrorW) => {
+      const renderPolySet = (polyList, shiftX, mirrorEffW) => {
         polyList.forEach(poly => {
           ctx.beginPath();
           poly.pts.forEach((pt, i) => {
-            const rawX = mirrorW ? (mirrorW - pt.x) : pt.x;
-            const px = finalX + shiftX + rawX * pairScale;
-            const py = finalY + pt.y * pairScale;
+            // Putar titik 90 derajat searah jarum jam jika autoRotate90 aktif
+            let rx = piece.autoRotate90 ? (piece.height - pt.y) : pt.x;
+            let ry = piece.autoRotate90 ? pt.x : pt.y;
+            if (mirrorEffW) rx = mirrorEffW - rx;
+            const px = finalX + shiftX + rx * pairScale;
+            const py = finalY + ry * pairScale;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
           ctx.strokeStyle = poly.isOuter ? '#000000' : '#64748b';
@@ -539,19 +651,20 @@ function generateMiniMarker() {
       renderPolySet(piece.polygons, 0, 0);
       if (drawSideBySide) {
         const secondSet = piece.secondPolygons || piece.polygons;
-        renderPolySet(secondSet, (piece.width + 25) * pairScale, piece.secondPolygons ? 0 : piece.width);
+        renderPolySet(secondSet, (effW + 25) * pairScale, piece.secondPolygons ? 0 : effW);
       }
 
       if (piece.qtyLabel) {
         ctx.fillStyle = '#000000';
-        ctx.font = 'bold ' + Math.max(labelSize - 1, 10) + 'px ' + fontFam;
+        ctx.font = 'bold ' + Math.max(labelSize - 2, 10) + 'px ' + fontFam;
         ctx.textAlign = 'left';
-        const labelX = Math.min(finalX + finalW + 4, cx + cellW - 42);
+        const labelX = Math.min(finalX + finalW + 5, cx + cellW - 36);
+        const labelY = Math.max(cy + 16, finalY + 11);
         if (piece.qtyLabel === 'Ax2 Bx2') {
-          ctx.fillText('Ax2', labelX, finalY + 13);
-          ctx.fillText('Bx2', labelX, finalY + 27);
+          ctx.fillText('Ax2', labelX, labelY);
+          ctx.fillText('Bx2', labelX, labelY + Math.max(labelSize, 12));
         } else {
-          ctx.fillText(piece.qtyLabel, labelX, finalY + 14);
+          ctx.fillText(piece.qtyLabel, labelX, labelY);
         }
       }
 
@@ -806,9 +919,59 @@ function openToolMode(mode) {
   isAutoSyncMode = (mode === 'autosync');
   document.getElementById('homeSplashScreen').classList.add('hidden');
   document.getElementById('mainAppScreen').classList.remove('hidden');
+
   const banner = document.getElementById('autoSyncBanner');
-  if (banner) banner.classList.toggle('hidden', !isAutoSyncMode);
-  switchTab('upload');
+  const tabsBar = document.querySelector('.tabs');
+  const panelUpload = document.getElementById('panelUpload');
+  const panelManual = document.getElementById('panelManual');
+  const floatingBar = document.getElementById('floatingActionBar');
+  const resultArea = document.getElementById('resultArea');
+
+  if (isAutoSyncMode) {
+    if (banner) banner.classList.remove('hidden');
+    if (tabsBar) tabsBar.classList.add('hidden');
+    if (panelManual) panelManual.classList.add('hidden');
+    if (floatingBar) floatingBar.style.display = 'none';
+
+    // Tampilkan panelUpload tapi sembunyikan form inputnya, sisakan resultArea untuk preview hasil sync
+    if (panelUpload) {
+      panelUpload.classList.remove('hidden');
+      Array.from(panelUpload.children).forEach(el => {
+        if (el.id !== 'resultArea') el.classList.add('hidden');
+      });
+    }
+    if (resultArea && typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0) {
+      resultArea.classList.remove('hidden');
+    }
+  } else {
+    if (banner) banner.classList.add('hidden');
+    if (tabsBar) tabsBar.classList.remove('hidden');
+    if (floatingBar) floatingBar.style.display = 'flex';
+    if (panelUpload) {
+      panelUpload.classList.remove('hidden');
+      Array.from(panelUpload.children).forEach(el => {
+        if (el.id !== 'resultArea') el.classList.remove('hidden');
+      });
+    }
+    switchTab('upload');
+  }
+  window.scrollTo(0, 0);
+}
+
+function runAutoSyncOnly() {
+  if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) {
+    alert("Unggah file pola (.DXF) terlebih dahulu di Menu 1 sebelum menjalankan Auto Sync!");
+    return;
+  }
+  const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+  if (cwKeys.length > 0) {
+    document.getElementById('colorwaySelect').value = cwKeys[0];
+    applyColorwayMapping();
+  }
+  generateMiniMarker();
+  const resultArea = document.getElementById('resultArea');
+  if (resultArea) resultArea.classList.remove('hidden');
+  appendSyncLog("✅ Auto Sync selesai! Preview hasil (" + (cwKeys.length || 1) + " Colorway) siap diperiksa di bawah.");
 }
 
 function backToSplash() {
@@ -823,4 +986,204 @@ async function runAutoSyncNow() {
   }
   generateMiniMarker();
   await saveAllColorwaysBatch();
+}
+
+
+// === SCREENSAVER GRAFFITI NEON & AUTO-IDLE ===
+(function initNeonScreensaver() {
+  const canvas = document.getElementById('screensaverCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const colors = ['#00f5d4', '#ff007f', '#fee440', '#9b5de5'];
+  const shapes = Array.from({ length: 14 }, (_, i) => ({
+    x: Math.random() * 400, y: Math.random() * 800,
+    vx: (Math.random() - 0.5) * 0.9, vy: (Math.random() - 0.5) * 0.9,
+    size: 24 + Math.random() * 38, rot: Math.random() * Math.PI * 2,
+    vrot: (Math.random() - 0.5) * 0.015, color: colors[i % colors.length],
+    type: i % 3
+  }));
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function drawFrame() {
+    if (!document.getElementById('homeSplashScreen').classList.contains('hidden')) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      shapes.forEach(s => {
+        s.x += s.vx; s.y += s.vy; s.rot += s.vrot;
+        if (s.x < -50) s.x = canvas.width + 50;
+        if (s.x > canvas.width + 50) s.x = -50;
+        if (s.y < -50) s.y = canvas.height + 50;
+        if (s.y > canvas.height + 50) s.y = -50;
+
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.rot);
+        ctx.strokeStyle = s.color;
+        ctx.shadowColor = s.color;
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 1.6;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        if (s.type === 0) {
+          ctx.rect(-s.size / 2, -s.size * 0.35, s.size, s.size * 0.7);
+        } else if (s.type === 1) {
+          ctx.moveTo(0, -s.size / 2); ctx.lineTo(s.size / 2, s.size / 2); ctx.lineTo(-s.size / 2, s.size / 2); ctx.closePath();
+        } else {
+          ctx.arc(0, 0, s.size * 0.4, 0, Math.PI * 2);
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+    requestAnimationFrame(drawFrame);
+  }
+  drawFrame();
+
+  // Otomatis kembali ke Screensaver jika tidak ada sentuhan selama 60 detik
+  let idleTimer;
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (document.getElementById('fullScreenModal')?.style.display !== 'flex') {
+        backToSplash();
+      }
+    }, 60000);
+  }
+  ['touchstart', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, resetIdleTimer, { passive: true }));
+  resetIdleTimer();
+})();
+
+// === HANDLER KHUSUS PLANNING SPREAD DI MENU KE-2 (MINIMARKER AUTO SYNC) ===
+function handlePlanningSpreadUpload(event) {
+  const file = event.target.files && event.target.files.item(0);
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames.at(0)], { header: 1, defval: '' });
+
+      if (Object.keys(bomTemplates).length === 0 && Object.keys(excelColorways).length > 0 && !Object.values(excelColorways).at(0).isMasterOrder) {
+        bomTemplates = JSON.parse(JSON.stringify(excelColorways));
+      }
+
+      const ok = parseMasterOrderCsv(rows);
+      if (ok) {
+        const cwKeys = Object.keys(excelColorways);
+        const sel = document.getElementById('colorwaySelect');
+        sel.innerHTML = cwKeys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
+        document.getElementById('colorwayBox').classList.remove('hidden');
+        document.getElementById('spreadZone').classList.add('loaded');
+        document.getElementById('spreadStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Colorway Planning Spread siap)';
+        applyColorwayMapping();
+        appendSyncLog('📋 Planning Spread dimuat: ' + cwKeys.length + ' Colorway siap disinkronkan via F/A.');
+      } else {
+        alert("Format file Planning Spread tidak dikenali (pastikan ada kolom Order No, Style No, Style Color, ItemName&Spec, F/A).");
+      }
+    } catch (err) {
+      alert("Gagal membaca Planning Spread: " + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseMasterOrderCsv(rows) {
+  const headerIdx = rows.findIndex(r => r.some(c => /Order\s*No/i.test(String(c))) && r.some(c => /ItemName&Spec/i.test(String(c))));
+  if (headerIdx === -1) return false;
+  const hdr = rows.at(headerIdx).map(h => String(h || '').trim());
+  const idxOrder = hdr.findIndex(h => /^Order\s*No$/i.test(h));
+  const idxStyle = hdr.findIndex(h => /^Style\s*No$/i.test(h));
+  const idxColorCode = hdr.findIndex(h => /^Style\s*Color$/i.test(h));
+  const idxQty = hdr.findIndex(h => /^Style\s*Qty$/i.test(h));
+  const idxSpec = hdr.findIndex(h => /ItemName&Spec/i.test(h));
+  const idxColName = hdr.findIndex(h => /^ColorName$/i.test(h));
+  const idxFA = hdr.findIndex(h => /^F\/?A$/i.test(h));
+  const idxPcs = hdr.findIndex(h => /^PCS$/i.test(h));
+  const idxKode = hdr.findIndex(h => /^Kode$/i.test(h));
+
+  const targetStyleClean = (currentStyleName || '').replace(/\s*\(.*\)/, '').trim().toUpperCase();
+  const dataRows = rows.slice(headerIdx + 1).filter(r => r.length > 5 && String(r.at(idxStyle) || '').trim());
+  const matched = dataRows.filter(r => String(r.at(idxStyle) || '').toUpperCase().includes(targetStyleClean));
+  const activeRows = matched.length > 0 ? matched : dataRows;
+  if (activeRows.length === 0) return false;
+
+  const firstOrder = String(activeRows.at(0).at(idxOrder) || '').trim().toUpperCase();
+  if (firstOrder && document.getElementById('orderNoInput')) document.getElementById('orderNoInput').value = firstOrder;
+
+  const spreadMap = {};
+  activeRows.forEach(r => {
+    const rawStyle = String(r.at(idxStyle) || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase();
+    const cwCode = String(r.at(idxColorCode) || '').trim().toUpperCase();
+    const spec = String(r.at(idxSpec) || '').trim().toUpperCase();
+    const colName = String(r.at(idxColName) || '').trim().toUpperCase();
+    const kodeRaw = String(r.at(idxKode) || '').trim().toUpperCase();
+    const qtyVal = String(r.at(idxQty) || '').trim();
+    const faVal = parseFloat(r.at(idxFA)) || 0;
+    const pcsVal = parseInt(r.at(idxPcs)) || 0;
+    if (!cwCode || !spec) return;
+
+    const cwKey = rawStyle + '_' + cwCode;
+    if (!spreadMap[cwKey]) {
+      spreadMap[cwKey] = {
+        cwCode, cleanColor: colName.endsWith(cwCode) ? colName : (colName + ' ' + cwCode),
+        sheetName: rawStyle + ' (' + qtyVal + ' PCS)', styleNo: rawStyle, styleQty: qtyVal,
+        pieces: [], fabricSpecs: {}, fabricPcs: {}, faMap: {}, faList: [], allowedFabrics: [], isMasterOrder: true
+      };
+    }
+    let fabCode = 'MA';
+    const mKode = kodeRaw.match(/\b(MA|T1|T2|T3|T5|L2|N[1-7])\b/);
+    if (mKode) fabCode = mKode.at(1);
+    else if (/NON-WOVEN/i.test(spec)) fabCode = 'T3';
+    else if (/200D.*EMBOSSED|SOLUTION DYE/i.test(spec)) fabCode = 'L2';
+    else if (/MESH/i.test(spec)) fabCode = 'N1';
+    else if (/PU LEATHER|SUEDE/i.test(spec)) fabCode = 'T2';
+    else if (/PRINT/i.test(spec)) fabCode = 'MA';
+    else if (spreadMap[cwKey].fabricSpecs['MA']) fabCode = 'T1';
+
+    if (colName.endsWith(' ' + cwCode) || colName === cwCode) spreadMap[cwKey].cleanColor = colName;
+    spreadMap[cwKey].fabricSpecs[fabCode] = spec + (colName ? ' (' + colName + ')' : '');
+    if (pcsVal > 0) spreadMap[cwKey].fabricPcs[fabCode] = pcsVal;
+    if (faVal > 0) { spreadMap[cwKey].faMap[fabCode] = faVal; spreadMap[cwKey].faList.push(faVal); }
+    if (!spreadMap[cwKey].allowedFabrics.includes(fabCode)) spreadMap[cwKey].allowedFabrics.push(fabCode);
+  });
+  return matchSpreadWithBomFA(spreadMap);
+}
+
+function matchSpreadWithBomFA(spreadMap) {
+  const allSpread = Object.values(spreadMap);
+  const bomEntries = Object.values(bomTemplates);
+  const paired = bomEntries.map(b => {
+    const m = allSpread.find(sp => b.cleanColor.includes(sp.cwCode) || b.sheetName.toUpperCase().includes('(' + sp.cwCode + ')'));
+    return { bom: b, cwCode: m ? m.cwCode : '', faMap: m ? m.faMap : {}, faList: m ? m.faList : [] };
+  });
+
+  excelColorways = {};
+  for (const [cwKey, sp] of Object.entries(spreadMap)) {
+    let chosen = paired.find(p => p.cwCode === sp.cwCode);
+    if (!chosen && paired.length > 0) {
+      let bestScore = Infinity;
+      paired.forEach(cand => {
+        if (cand.faList.length === 0) return;
+        const score = Math.abs((sp.faMap['MA'] || 0) - (cand.faMap['MA'] || 0)) * 3
+                    + Math.abs((sp.faMap['T1'] || 0) - (cand.faMap['T1'] || 0)) * 3
+                    + Math.abs((sp.faMap['L2'] || 0) - (cand.faMap['L2'] || 0))
+                    + Math.abs(sp.allowedFabrics.length - Object.keys(cand.faMap).length) * 0.05;
+        if (score < bestScore) { bestScore = score; chosen = cand; }
+      });
+    }
+    if (!chosen && bomEntries.length > 0) chosen = { bom: bomEntries.at(0), cwCode: 'DEFAULT' };
+    sp.pieces = chosen ? JSON.parse(JSON.stringify(chosen.bom.pieces)) : [{ fabric: 'MA', name: 'SPREAD_ONLY', raw: 'SPREAD_ONLY', codes: [], size: '0*0', qty: 1 }];
+    if (chosen && chosen.cwCode && chosen.cwCode !== sp.cwCode) {
+      sp.clonedFrom = chosen.cwCode;
+      sp.sheetName = sp.styleNo + ' | Tiru F/A: ' + chosen.cwCode;
+    }
+    excelColorways[cwKey] = sp;
+  }
+  return Object.keys(excelColorways).length > 0;
 }

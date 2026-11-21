@@ -121,11 +121,21 @@
     input:focus, select:focus { outline: none; border-color: var(--neon-cyan); box-shadow: 0 0 8px rgba(0,245,212,0.4); }
     .piece-item { border-bottom: 1px solid #231f42; display: flex; }
     #markerContainer canvas { width: 100%; height: auto; border-radius: 8px; background: #fff; display: block; }
+
+    @keyframes neonPulse {
+      0%, 100% { filter: drop-shadow(0 0 12px rgba(0,245,212,0.55)); transform: skewX(-5deg) scale(1); }
+      50% { filter: drop-shadow(0 0 24px rgba(255,0,127,0.85)); transform: skewX(-5deg) scale(1.03); }
+    }
+    .graffiti-title { animation: neonPulse 3.2s ease-in-out infinite; }
+    #homeSplashScreen { position: relative; overflow: hidden; }
+    #screensaverCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+    #homeSplashScreen > *:not(canvas) { position: relative; z-index: 1; }
   </style>
 </head>
 <body>
   <!-- LAYAR AWAL (SPLASH SCREEN) -->
   <div id="homeSplashScreen" class="splash-wrap">
+    <canvas id="screensaverCanvas"></canvas>
     <div class="graffiti-badge">⚡ STREET CAD EDITION ⚡</div>
     <h1 class="graffiti-title">MINIMARKER STUDIO V4</h1>
     <div class="graffiti-creator">CREATED BY ERVAN ALVIAN</div>
@@ -144,10 +154,20 @@
       <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🏠 HOME</button>
     </div>
 
-    <div id="autoSyncBanner" class="card hidden" style="border-color:var(--neon-pink); background:rgba(255,0,127,0.12);">
-      <div class="card-title" style="color:var(--neon-pink);">⚡ MODE MINIMARKER AUTO SYNC AKTIF</div>
-      <div class="card-sub" style="color:#f8fafc;">Unggah DXF &amp; Excel BOM di bawah — sistem otomatis memetakan seluruh Colorway dan menyimpannya ke folder Order No!</div>
-      <button type="button" class="btn btn-pink" style="margin-top:8px; padding:10px;" onclick="runAutoSyncNow()">🚀 JALANKAN AUTO SYNC SEKARANG</button>
+    <div id="autoSyncBanner" class="card hidden" style="border-color:var(--neon-pink); background:rgba(255,0,127,0.12); box-shadow:0 0 20px rgba(255,0,127,0.3);">
+      <div class="card-title" style="color:var(--neon-pink);">⚡ MINIMARKER AUTO SYNC ENGINE</div>
+      <div class="card-sub" style="color:#f8fafc; margin-bottom:10px;">1. Unggah DXF &amp; Excel BOM di bawah.<br>2. Unggah file <strong>Planning Spread (Final Fabric)</strong> di kotak khusus ini agar semua Colorway disinkronkan via <strong>F/A</strong>:</div>
+
+      <div class="dropzone" id="spreadZone" style="border-color:var(--neon-yellow); background:rgba(254,228,64,0.08); margin-bottom:10px;" onclick="document.getElementById('spreadInput').click()">
+        <input type="file" id="spreadInput" accept=".csv,.xlsx,.xls" class="hidden" onchange="handlePlanningSpreadUpload(event)" />
+        <div id="spreadStatus" style="font-size:13px; font-weight:800; color:var(--neon-yellow);">📋 Ketuk untuk Unggah File PLANNING SPREAD (.CSV/.XLSX)</div>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-pink" style="flex:1; padding:11px; font-size:13px;" onclick="runAutoSyncOnly()">⚡ 1. AUTO SYNC</button>
+        <button type="button" class="btn" style="flex:1.2; padding:11px; font-size:13px;" onclick="saveAllColorwaysBatch()">💾 2. SAVE SEMUA (ZIP)</button>
+      </div>
+      <div id="autoSyncLog" class="hidden" style="margin-top:10px; padding:8px 10px; background:#07060e; border:1px solid var(--neon-cyan); border-radius:8px; font-size:11px; color:var(--neon-cyan); max-height:150px; overflow-y:auto;"></div>
     </div>
 
     <div class="tabs">
@@ -233,6 +253,7 @@
           <button type="button" onclick="navigateColorway(1)" style="background:var(--card); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">▶</button>
         </div>
         <button type="button" class="btn btn-pink" style="margin-bottom:8px;" onclick="openFullPreview()">⛶ PREVIEW 1 LAYAR PENUH</button>
+        <button type="button" class="btn" style="margin-bottom:8px; background:linear-gradient(90deg, #ff007f, #fee440); color:#07060e;" onclick="openToolMode('autosync')">⚡ LANJUT KE MENU 2: AUTO SYNC &rarr;</button>
         <div id="previewViewport" style="width:100%; overflow:hidden; background:#05040a; border:1.5px solid var(--neon-purple); border-radius:10px; margin-bottom:10px;">
           <div id="markerContainer" style="width:100%;"></div>
         </div>
