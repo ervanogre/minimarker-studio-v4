@@ -135,7 +135,7 @@
     </div>
   </div>
   <!-- WORKSPACE UTAMA -->
-  <div id="mainAppScreen" class="hidden">
+  <div id="mainAppScreen" class="hidden" style="padding-bottom:76px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1.5px solid rgba(255,0,127,0.4);">
       <div>
         <div style="font-size:16px; font-weight:900; font-style:italic; color:var(--neon-cyan); text-shadow:0 0 8px rgba(0,245,212,0.5);">MINIMARKER STUDIO V4</div>
@@ -271,6 +271,11 @@
         </div>
       </div>
       <button class="btn" onclick="generateMiniMarker()">🔥 TERAPKAN &amp; BUAT MINI MARKER</button>
+    </div>
+
+    <div id="floatingActionBar" style="position:fixed; bottom:0; left:0; right:0; z-index:900; background:rgba(11, 9, 26, 0.94); backdrop-filter:blur(8px); border-top:1.5px solid var(--neon-cyan); padding:10px 12px; display:flex; gap:8px; box-shadow:0 -4px 20px rgba(0, 245, 212, 0.25);">
+      <button type="button" class="btn btn-secondary" style="flex:1; padding:11px 8px; font-size:12px; margin:0;" onclick="saveLayoutPreferences(true)">💾 SIMPAN PERUBAHAN</button>
+      <button type="button" class="btn" style="flex:1.2; padding:11px 8px; font-size:12px; margin:0;" onclick="generateMiniMarker()">🔥 BUAT MINI MARKER</button>
     </div>
   </div>
 
