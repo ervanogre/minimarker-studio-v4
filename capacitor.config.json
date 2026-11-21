@@ -1,5 +1,13 @@
 {
   "appId": "com.minimarker.studio.v4",
   "appName": "MiniMarker Studio V4",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "url": "https://github.io",
+    "cleartext": true,
+    "allowNavigation": [
+      "ervanogre.github.io",
+      "*.github.io"
+    ]
+  }
 }

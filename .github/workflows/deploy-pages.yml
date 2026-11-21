@@ -1,0 +1,36 @@
+name: Deploy Live Update to GitHub Pages
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare www & Offline Libs
+        run: |
+          npm install
+          mkdir -p www/libs
+          cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
+          cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
+          cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
+          cp node_modules/jszip/dist/jszip.min.js www/libs/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'www'
+      - id: deployment
+        uses: actions/deploy-pages@v4
