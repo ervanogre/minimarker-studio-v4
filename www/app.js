@@ -86,6 +86,66 @@ function isMirroredPoly(polysA, polysB, wA, wB) {
   return (matches / ptsA.length) >= 0.75;
 }
 
+function samplePolyDense(polygons) {
+  const pts = [];
+  polygons.forEach(poly => {
+    const arr = poly.pts || [];
+    for (let i = 0; i < arr.length; i++) {
+      const a = arr.at(i);
+      pts.push({ x: a.x, y: a.y });
+      const b = (i + 1 < arr.length) ? arr.at(i + 1) : (poly.isOuter ? arr.at(0) : null);
+      if (b) {
+        const dist = Math.hypot(b.x - a.x, b.y - a.y);
+        const steps = Math.min(40, Math.floor(dist / 5)); // titik sampel tiap 5 mm
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        }
+      }
+    }
+  });
+  return pts;
+}
+
+function isAxisSymmetric(polygons, width, height, axis) {
+  const tolSq = 1.5; // toleransi 1.2 mm
+  const samplePts = samplePolyDense(polygons);
+  if (samplePts.length === 0) return true;
+  const mirroredPts = samplePts.map(pt => ({
+    x: axis === "X" ? (width - pt.x) : pt.x,
+    y: axis === "Y" ? (height - pt.y) : pt.y
+  }));
+  for (let i = 0; i < samplePts.length; i++) {
+    const pt = samplePts.at(i);
+    let matched = false;
+    for (let j = 0; j < mirroredPts.length; j++) {
+      const m = mirroredPts.at(j);
+      const dx = pt.x - m.x;
+      const dy = pt.y - m.y;
+      if ((dx * dx + dy * dy) <= tolSq) { matched = true; break; }
+    }
+    if (!matched) return false;
+  }
+  return true;
+}
+
+function isSelfSymmetricPoly(polygons, width, height) {
+  if (!polygons || polygons.length === 0) return true;
+  return isAxisSymmetric(polygons, width, height, "X") && isAxisSymmetric(polygons, width, height, "Y");
+}
+
+function classifyQtyBySymmetry(piece, count) {
+  if (count <= 1) return "";
+  const isSym = isSelfSymmetricPoly(piece.polygons, piece.width, piece.height);
+  if (!isSym) {
+    piece.isPairAB = true;
+    return count >= 4 ? "Ax2 Bx2" : "A/B";
+  } else {
+    piece.isPairAB = false;
+    return "X" + count;
+  }
+}
+
 function getBasePairName(name) {
   return name.replace(/[\s_\-]+(L|R|LEFT|RIGHT|A|B|1|2)$/i, '').trim();
 }
@@ -138,7 +198,15 @@ function extractPiecesFromDxf(dxf) {
           width: bounds.width,
           height: bounds.height,
           fabric: 'MA',
-          qtyLabel: /\b(A\/B|L\/R|PAIR)\b/i.test(fullText) ? 'A/B' : '',
+          qtyLabel: (() => {
+            if (/\b(A\/B|L\/R|PAIR)\b/i.test(fullText)) return 'A/B';
+            const mDxfQty = fullText.match(/(?:^|\s|\||-)X\s*([2-8])\b/i);
+            if (mDxfQty) {
+              const cnt = parseInt(mDxfQty.at(1));
+              return isSelfSymmetricPoly(normPolys, bounds.width, bounds.height) ? ('X' + cnt) : (cnt >= 4 ? 'Ax2 Bx2' : 'A/B');
+            }
+            return '';
+          })(),
           processLabel: detectProcessFromText(fullText)
         });
       }
@@ -157,7 +225,7 @@ function extractPiecesFromDxf(dxf) {
         dup.name = baseP;
         dup.qtyLabel = dup.dupCount >= 4 ? 'Ax2 Bx2' : 'A/B';
       } else if (!dup.isPairAB) {
-        dup.qtyLabel = 'X' + dup.dupCount;
+        dup.qtyLabel = classifyQtyBySymmetry(dup, dup.dupCount);
       }
       if (!dup.processLabel && p.processLabel) dup.processLabel = p.processLabel;
     } else {
@@ -194,10 +262,25 @@ function matchSpreadWithBomFA(spreadMap) {
     }
     if (!chosen && bomEntries.length > 0) chosen = { bom: bomEntries.at(0), cwCode: 'DEFAULT' };
     sp.pieces = chosen ? JSON.parse(JSON.stringify(chosen.bom.pieces)) : [{ fabric: 'MA', name: 'SPREAD_ONLY', raw: 'SPREAD_ONLY', codes: [], size: '0*0', qty: 1 }];
+    const baseSpecs = chosen && chosen.bom && chosen.bom.fabricSpecs ? JSON.parse(JSON.stringify(chosen.bom.fabricSpecs)) : {};
+    const spreadSpecs = sp.fabricSpecs ? JSON.parse(JSON.stringify(sp.fabricSpecs)) : {};
+    const mergedSpecs = Object.assign({}, baseSpecs, spreadSpecs);
+
     if (chosen && chosen.cwCode && chosen.cwCode !== sp.cwCode) {
       sp.clonedFrom = chosen.cwCode;
       sp.sheetName = sp.styleNo + ' | Tiru F/A: ' + chosen.cwCode;
+      const oldColorName = (chosen.bom.cleanColor || "").toUpperCase();
+      // Bersihkan sisa kode warna & nama warna colorway lain pada keterangan fabric yang tidak ada di spreadSpecs
+      Object.keys(mergedSpecs).forEach(fab => {
+        if (!spreadSpecs[fab]) {
+          let desc = String(mergedSpecs[fab] || "");
+          if (oldColorName) desc = desc.replace(oldColorName, sp.cleanColor);
+          desc = desc.replace(/#[A-Z0-9]{3,6}\s*/g, "").replace(/\((?!WHITE|INTERNAL)[^)]+\)/gi, "(" + sp.cleanColor + ")");
+          mergedSpecs[fab] = desc.replace(/\s+/g, " ").trim();
+        }
+      });
     }
+    sp.fabricSpecs = mergedSpecs;
     excelColorways[cwKey] = sp;
   }
   return Object.keys(excelColorways).length > 0;
@@ -312,7 +395,13 @@ function applyColorwayMapping() {
   const bom = excelColorways[cwKey];
   if (!bom) return;
   currentColorwayName = bom.cleanColor;
-  if (parsedPieces.length === 0) return;
+  if (parsedPieces.length === 0 && (!window._cleanDxfPieces || window._cleanDxfPieces.length === 0)) return;
+
+  // Simpan DXF asli bersih saat pertama kali dipetakan, dan selalu reset dari DXF bersih agar antar-colorway tidak menumpuk
+  if (!window._cleanDxfPieces || window._cleanDxfPieces.length === 0) {
+    window._cleanDxfPieces = JSON.parse(JSON.stringify(parsedPieces));
+  }
+  parsedPieces = JSON.parse(JSON.stringify(window._cleanDxfPieces));
   const availableBom = bom.pieces.map((b, idx) => ({ ...b, idx, used: false }));
   parsedPieces.forEach(p => {
     const d1 = p.width / 10, d2 = p.height / 10, up = p.rawText.toUpperCase();
@@ -333,16 +422,44 @@ function applyColorwayMapping() {
       p.name = bestItem.name || p.name;
       p.sizeText = bestItem.size;
       if (bestItem.qty > 1) {
-        if (p.isPairAB || /SHOULDER|FRONT.*SIDE|ENDZIP|GUSSET.*SIDE/i.test(p.name)) {
-          p.isPairAB = true;
-          p.qtyLabel = bestItem.qty >= 4 ? 'Ax2 Bx2' : 'A/B';
-        } else {
-          p.isPairAB = false;
-          p.qtyLabel = 'X' + bestItem.qty;
-        }
+        p.qtyLabel = classifyQtyBySymmetry(p, bestItem.qty);
+      } else {
+        p.qtyLabel = "";
+        p.isPairAB = false;
       }
     }
   });
+  // Jika 1 pattern DXF dipakai di >1 fabric pada BOM, buat komponen terpisah untuk tiap fabric yang berbeda
+  const extraCrossFabPieces = [];
+  const existingFabKeys = new Set(parsedPieces.map(p => `${p.fabric}|${p.name}|${p.sizeText}`));
+  availableBom.forEach(b => {
+    if (b.used) return;
+    const dimP = String(b.size || "").split("*").map(Number);
+    const s1 = dimP.at(0), s2 = dimP.at(1);
+    if (!s1 || !s2) return;
+    const matchDxf = parsedPieces.find(p => {
+      if (p.fabric === b.fabric) return false;
+      const d1 = p.width / 10, d2 = p.height / 10;
+      const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
+      return minDiff <= 2.2;
+    });
+    const uniqueKey = `${b.fabric}|${b.name || (matchDxf && matchDxf.name)}|${b.size}`;
+    if (matchDxf && !existingFabKeys.has(uniqueKey)) {
+      b.used = true;
+      existingFabKeys.add(uniqueKey);
+      const clone = JSON.parse(JSON.stringify(matchDxf));
+      clone.id = parsedPieces.length + extraCrossFabPieces.length + 1;
+      clone.fabric = b.fabric;
+      clone.name = b.name || clone.name;
+      clone.sizeText = b.size;
+      clone.qtyLabel = b.qty > 1 ? classifyQtyBySymmetry(clone, b.qty) : "";
+      extraCrossFabPieces.push(clone);
+    }
+  });
+  if (extraCrossFabPieces.length > 0) {
+    parsedPieces = parsedPieces.concat(extraCrossFabPieces);
+  }
+
   renderPieceMappingList();
   renderDynamicProcessColors();
 }
@@ -784,7 +901,7 @@ function generateMiniMarker() {
     const defaultSpecs = {
       MA: 'POLY 600D SOLID 100% RECYCLED 60" PU (' + currentColorwayName + ')',
       T1: 'POLY 600D SOLID 100% RECYCLED 60" PU (BLACK 008)',
-      T2: 'PU LEATHER 52" (VENDOR BROWN 0YK)',
+      T2: 'PU LEATHER 52" (' + currentColorwayName + ')',
       T3: 'NON-WOVEN FABRIC 60" 100G (WHITE)',
       L2: 'POLY 200D SOLUTION DYE EMBOSSED 100% RECYCLED 58" PU (INTERNAL)',
       N1: 'POLY 840D MESH 60" (' + currentColorwayName + ')'
@@ -1315,10 +1432,25 @@ function matchSpreadWithBomFA(spreadMap) {
     }
     if (!chosen && bomEntries.length > 0) chosen = { bom: bomEntries.at(0), cwCode: 'DEFAULT' };
     sp.pieces = chosen ? JSON.parse(JSON.stringify(chosen.bom.pieces)) : [{ fabric: 'MA', name: 'SPREAD_ONLY', raw: 'SPREAD_ONLY', codes: [], size: '0*0', qty: 1 }];
+    const baseSpecs = chosen && chosen.bom && chosen.bom.fabricSpecs ? JSON.parse(JSON.stringify(chosen.bom.fabricSpecs)) : {};
+    const spreadSpecs = sp.fabricSpecs ? JSON.parse(JSON.stringify(sp.fabricSpecs)) : {};
+    const mergedSpecs = Object.assign({}, baseSpecs, spreadSpecs);
+
     if (chosen && chosen.cwCode && chosen.cwCode !== sp.cwCode) {
       sp.clonedFrom = chosen.cwCode;
       sp.sheetName = sp.styleNo + ' | Tiru F/A: ' + chosen.cwCode;
+      const oldColorName = (chosen.bom.cleanColor || "").toUpperCase();
+      // Bersihkan sisa kode warna & nama warna colorway lain pada keterangan fabric yang tidak ada di spreadSpecs
+      Object.keys(mergedSpecs).forEach(fab => {
+        if (!spreadSpecs[fab]) {
+          let desc = String(mergedSpecs[fab] || "");
+          if (oldColorName) desc = desc.replace(oldColorName, sp.cleanColor);
+          desc = desc.replace(/#[A-Z0-9]{3,6}\s*/g, "").replace(/\((?!WHITE|INTERNAL)[^)]+\)/gi, "(" + sp.cleanColor + ")");
+          mergedSpecs[fab] = desc.replace(/\s+/g, " ").trim();
+        }
+      });
     }
+    sp.fabricSpecs = mergedSpecs;
     excelColorways[cwKey] = sp;
   }
   return Object.keys(excelColorways).length > 0;
