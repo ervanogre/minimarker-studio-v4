@@ -1,7 +1,7 @@
 const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 
-const LIVE_URL = 'https://github.io';
+const APP_URL = 'https://github.io';
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -15,15 +15,22 @@ async function createWindow() {
     }
   });
 
-  // Bersihkan cache HTTP agar selalu mengambil versi terbaru saat online
   await session.defaultSession.clearCache();
 
-  // Jika gagal terhubung (PC sedang offline), otomatis muat versi offline bawaan
+  // Jika offline atau gagal memuat URL live, langsung buka file lokal bawaan
   win.webContents.on('did-fail-load', () => {
     win.loadFile(path.join(__dirname, 'www', 'index.html'));
   });
 
-  win.loadURL(LIVE_URL + '?t=' + Date.now());
+  // Pastikan hanya membuka URL aplikasi (tidak membuka github.com)
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith(APP_URL) && !url.startsWith('file://')) {
+      event.preventDefault();
+      win.loadURL(APP_URL);
+    }
+  });
+
+  win.loadURL(APP_URL);
 }
 
 app.whenReady().then(createWindow);
