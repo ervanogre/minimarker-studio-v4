@@ -533,6 +533,7 @@ function renderPieceMappingList() {
       <div style="display:flex; gap:6px; align-items:center;">
         <input type="text" value="${p.name.replace(/"/g, '&quot;')}" onchange="parsedPieces.at(${idx}).name = this.value.toUpperCase()" placeholder="Nama Pattern" style="flex:2; margin:0; padding:6px 8px; font-size:12px; font-weight:600;" />
         <input type="text" value="${p.sizeText.replace(/"/g, '&quot;')}" onchange="parsedPieces.at(${idx}).sizeText = this.value" placeholder="Ukuran" style="flex:1; margin:0; padding:6px 8px; font-size:12px;" />
+        <button type="button" onclick="openQuickPatternEditor(parsedPieces.at(${idx}))" style="background:var(--neon-cyan); color:#07060e; border:none; border-radius:6px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">✏️ EDIT</button>
       </div>
       <div style="display:flex; gap:6px; justify-content:flex-end;">
         <select onchange="parsedPieces.at(${idx}).fabric = this.value" style="flex:1;">
