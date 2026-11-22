@@ -1242,6 +1242,12 @@ function syncMenu1LayoutToPieces(targetPieces) {
       tp.qtyLabel = found.mp.qtyLabel;
       tp.processLabel = found.mp.processLabel;
       tp.isPairAB = found.mp.isPairAB;
+      tp.autoRotate90 = found.mp.autoRotate90;
+      tp.width = found.mp.width;
+      tp.height = found.mp.height;
+      tp.polygons = found.mp.polygons;
+      tp.secondPolygons = found.mp.secondPolygons;
+      tp.maxAllowedScale = found.mp.maxAllowedScale;
       tp._menu1Order = found.mIdx;
     } else {
       tp._menu1Order = 9999;
