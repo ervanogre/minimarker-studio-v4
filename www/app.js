@@ -1581,3 +1581,116 @@ document.addEventListener("click", function(ev) {
     openQuickPatternEditor(hit.piece);
   }
 }, true);
+
+
+// === AUTO-PREVIEW JEDA 2 DETIK & SIMPAN PERUBAHAN (COLOR INI VS SEMUA COLOR) ===
+let _autoPreview2sTimer = null;
+window._cwCustomOverrides = window._cwCustomOverrides || {};
+
+function renderPreviewSilent() {
+  if (typeof parsedPieces === "undefined" || parsedPieces.length === 0) return;
+  const fsModal = document.getElementById("fullScreenModal");
+  const isFsOpen = fsModal && !fsModal.classList.contains("hidden") && fsModal.style.display !== "none";
+  const origOpenFs = window.openFullPreview;
+  if (!isFsOpen && typeof origOpenFs === "function") {
+    // Jangan paksa buka layar penuh jika user sedang mengetik di form edit
+    window.openFullPreview = function() {};
+  }
+  try {
+    if (typeof saveLayoutPreferences === "function") saveLayoutPreferences(false);
+    if (typeof generateMiniMarker === "function") generateMiniMarker();
+  } finally {
+    if (origOpenFs) window.openFullPreview = origOpenFs;
+  }
+}
+
+function scheduleAutoPreview2s() {
+  clearTimeout(_autoPreview2sTimer);
+  _autoPreview2sTimer = setTimeout(function() {
+    renderPreviewSilent();
+  }, 2000);
+}
+
+// Dengarkan setiap ketikan atau perubahan input di seluruh panel editor (jeda 2 detik)
+document.addEventListener("input", function(ev) {
+  const t = ev.target;
+  if (!t || t.type === "file") return;
+  if (t.closest("#panelUpload, #panelManual, #quickEditModal")) {
+    scheduleAutoPreview2s();
+  }
+});
+
+document.addEventListener("change", function(ev) {
+  const t = ev.target;
+  if (!t || t.type === "file" || t.id === "colorwaySelect") return;
+  if (t.closest("#panelUpload, #panelManual, #quickEditModal")) {
+    scheduleAutoPreview2s();
+  }
+});
+
+function openSaveScopeModal() {
+  const m = document.getElementById("saveScopeModal");
+  if (!m) return;
+  m.classList.remove("hidden");
+  m.style.display = "flex";
+}
+
+function closeSaveScopeModal() {
+  const m = document.getElementById("saveScopeModal");
+  if (!m) return;
+  m.classList.add("hidden");
+  m.style.display = "none";
+}
+
+function applySaveWithScope(scope) {
+  closeSaveScopeModal();
+  if (typeof saveLayoutPreferences === "function") saveLayoutPreferences(false);
+
+  const curKey = document.getElementById("colorwaySelect")?.value || currentColorwayName || "DEFAULT";
+  const snapshotPieces = JSON.parse(JSON.stringify(parsedPieces || []));
+
+  if (scope === "current") {
+    window._cwCustomOverrides[curKey] = snapshotPieces;
+    if (excelColorways && excelColorways[curKey]) {
+      excelColorways[curKey].customPieces = snapshotPieces;
+    }
+    renderPreviewSilent();
+    alert("✅ Perubahan disimpan khusus untuk colorway: " + (currentColorwayName || curKey));
+  } else if (scope === "all") {
+    // Terapkan seluruh editan ke semua colorway yang ada
+    window._cleanDxfPieces = JSON.parse(JSON.stringify(snapshotPieces));
+    if (excelColorways && typeof excelColorways === "object") {
+      Object.keys(excelColorways).forEach(k => {
+        window._cwCustomOverrides[k] = JSON.parse(JSON.stringify(snapshotPieces));
+        excelColorways[k].customPieces = JSON.parse(JSON.stringify(snapshotPieces));
+        // Sinkronkan juga aturan pattern ke template BOM colorway lain
+        if (Array.isArray(excelColorways[k].pieces)) {
+          snapshotPieces.forEach((sp, idx) => {
+            if (excelColorways[k].pieces[idx]) {
+              excelColorways[k].pieces[idx].name = sp.name;
+              excelColorways[k].pieces[idx].size = sp.sizeText;
+              excelColorways[k].pieces[idx].fabric = sp.fabric;
+            }
+          });
+        }
+      });
+    }
+    renderPreviewSilent();
+    alert("✅ Semua perubahan berhasil diterapkan ke SELURUH Colorway!");
+  }
+}
+
+// Pastikan saat berpindah colorway, hasil simpanan khusus colorway tersebut tetap terjaga
+if (typeof applyColorwayMapping === "function" && !window._wrappedApplyCwMapping) {
+  window._wrappedApplyCwMapping = true;
+  const _origApplyCw = applyColorwayMapping;
+  applyColorwayMapping = function() {
+    _origApplyCw.apply(this, arguments);
+    const cwKey = document.getElementById("colorwaySelect")?.value;
+    if (cwKey && window._cwCustomOverrides && window._cwCustomOverrides[cwKey]) {
+      parsedPieces = JSON.parse(JSON.stringify(window._cwCustomOverrides[cwKey]));
+      if (typeof renderPieceMappingList === "function") renderPieceMappingList();
+      if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+    }
+  };
+}
