@@ -1234,13 +1234,17 @@ function runAutoSyncOnly() {
   }
   const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
   if (cwKeys.length > 0) {
-    document.getElementById('colorwaySelect').value = cwKeys[0];
-    applyColorwayMapping();
+    const sel = document.getElementById('colorwaySelect');
+    if (sel && !sel.value) {
+      sel.value = cwKeys[0];
+      applyColorwayMapping();
+    }
   }
+  // Gunakan mesin penyusun generateMiniMarker() yang sama persis dengan Menu 1
   generateMiniMarker();
   const resultArea = document.getElementById('resultArea');
   if (resultArea) resultArea.classList.remove('hidden');
-  appendSyncLog("✅ Auto Sync selesai! Preview hasil (" + (cwKeys.length || 1) + " Colorway) siap diperiksa di bawah.");
+  appendSyncLog("✅ Auto Sync selesai! Penyusunan pola disamakan dengan Menu 1 (" + (cwKeys.length || 1) + " Colorway).");
 }
 
 function backToSplash() {
