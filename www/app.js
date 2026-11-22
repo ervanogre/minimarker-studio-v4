@@ -1227,6 +1227,29 @@ function openToolMode(mode) {
   window.scrollTo(0, 0);
 }
 
+function syncMenu1LayoutToPieces(targetPieces) {
+  if (!Array.isArray(parsedPieces) || parsedPieces.length === 0 || !Array.isArray(targetPieces)) return;
+  const masterMap = new Map();
+  parsedPieces.forEach((mp, mIdx) => {
+    masterMap.set(mp.name, { mp, mIdx });
+    if (mp.id) masterMap.set(mp.id, { mp, mIdx });
+  });
+  targetPieces.forEach(tp => {
+    const found = (tp.id && masterMap.get(tp.id)) || masterMap.get(tp.name);
+    if (found) {
+      tp.name = found.mp.name;
+      tp.sizeText = found.mp.sizeText;
+      tp.qtyLabel = found.mp.qtyLabel;
+      tp.processLabel = found.mp.processLabel;
+      tp.isPairAB = found.mp.isPairAB;
+      tp._menu1Order = found.mIdx;
+    } else {
+      tp._menu1Order = 9999;
+    }
+  });
+  targetPieces.sort((a, b) => (a._menu1Order ?? 9999) - (b._menu1Order ?? 9999));
+}
+
 function runAutoSyncOnly() {
   if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) {
     alert("Unggah file pola (.DXF) terlebih dahulu di Menu 1 sebelum menjalankan Auto Sync!");
@@ -1240,6 +1263,9 @@ function runAutoSyncOnly() {
       applyColorwayMapping();
     }
   }
+  Object.values(excelColorways || {}).forEach(cw => {
+    if (cw && Array.isArray(cw.pieces)) syncMenu1LayoutToPieces(cw.pieces);
+  });
   // Gunakan mesin penyusun generateMiniMarker() yang sama persis dengan Menu 1
   generateMiniMarker();
   const resultArea = document.getElementById('resultArea');
@@ -1354,8 +1380,17 @@ function handlePlanningSpreadUpload(event) {
         document.getElementById('colorwayBox').classList.remove('hidden');
         document.getElementById('spreadZone').classList.add('loaded');
         document.getElementById('spreadStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Colorway Planning Spread siap)';
+        const menu1Snapshot = JSON.parse(JSON.stringify(parsedPieces));
+        cwKeys.forEach(k => {
+          if (excelColorways[k] && Array.isArray(excelColorways[k].pieces)) {
+            syncMenu1LayoutToPieces(excelColorways[k].pieces);
+          }
+        });
         applyColorwayMapping();
-        appendSyncLog('📋 Planning Spread dimuat: ' + cwKeys.length + ' Colorway siap disinkronkan via F/A.');
+        if (menu1Snapshot.length > 0) {
+          parsedPieces = menu1Snapshot;
+        }
+        appendSyncLog('📋 Planning Spread dimuat: ' + cwKeys.length + ' Colorway mengikuti susunan Menu 1.');
       } else {
         alert("Format file Planning Spread tidak dikenali (pastikan ada kolom Order No, Style No, Style Color, ItemName&Spec, F/A).");
       }
