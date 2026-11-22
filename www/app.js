@@ -1573,25 +1573,76 @@ function saveQuickPatternEdit() {
   const idx = parseInt(document.getElementById('qePieceIdx').value);
   if (isNaN(idx) || !parsedPieces.at(idx)) return;
   const p = parsedPieces.at(idx);
+  const oldName = p.name;
+  const oldId = p.id;
+  const scopeEl = document.querySelector('input[name="qeApplyScope"]:checked');
+  const applyAll = !scopeEl || scopeEl.value === 'all';
+
   p.name = document.getElementById('qeName').value.trim().toUpperCase();
   p.sizeText = document.getElementById('qeSize').value.trim();
   p.fabric = document.getElementById('qeFabric').value;
-  p.qtyLabel = document.getElementById('qeQty').value;
+  p.qtyLabel = document.getElementById('qeQty').value.trim().toUpperCase();
   p.processLabel = document.getElementById('qeProc').value.trim().toUpperCase();
+  p.isPairAB = (p.qtyLabel === 'A/B' || p.qtyLabel === 'Ax2 Bx2');
 
-  if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList) && colorwayList.at(activeColorwayIdx)?.pieces?.at(idx)) {
-    const cp = colorwayList.at(activeColorwayIdx).pieces.at(idx);
-    cp.name = p.name;
-    cp.sizeText = p.sizeText;
-    cp.fabric = p.fabric;
-    cp.qtyLabel = p.qtyLabel;
-    cp.processLabel = p.processLabel;
+  const syncPieceProps = (target) => {
+    if (!target) return;
+    target.name = p.name;
+    target.sizeText = p.sizeText;
+    target.size = p.sizeText;
+    target.fabric = p.fabric;
+    target.qtyLabel = p.qtyLabel;
+    target.processLabel = p.processLabel;
+    target.isPairAB = p.isPairAB;
+  };
+
+  window._cwCustomOverrides = window._cwCustomOverrides || {};
+  const curKey = document.getElementById('colorwaySelect')?.value || currentColorwayName || 'DEFAULT';
+
+  if (applyAll) {
+    if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList)) {
+      colorwayList.forEach(cw => {
+        if (cw && Array.isArray(cw.pieces)) {
+          const match = (cw.pieces.at(idx) && cw.pieces.at(idx).name === oldName) ? cw.pieces.at(idx) : cw.pieces.find(it => (oldId && it.id === oldId) || it.name === oldName);
+          syncPieceProps(match);
+        }
+      });
+    }
+    if (typeof excelColorways !== "undefined" && excelColorways) {
+      Object.keys(excelColorways).forEach(k => {
+        const cwObj = excelColorways[k];
+        if (cwObj && Array.isArray(cwObj.pieces)) {
+          const match = (cwObj.pieces.at(idx) && cwObj.pieces.at(idx).name === oldName) ? cwObj.pieces.at(idx) : cwObj.pieces.find(it => (oldId && it.id === oldId) || it.name === oldName);
+          syncPieceProps(match);
+        }
+        if (window._cwCustomOverrides[k] && Array.isArray(window._cwCustomOverrides[k])) {
+          const matchOv = (window._cwCustomOverrides[k].at(idx) && window._cwCustomOverrides[k].at(idx).name === oldName) ? window._cwCustomOverrides[k].at(idx) : window._cwCustomOverrides[k].find(it => (oldId && it.id === oldId) || it.name === oldName);
+          syncPieceProps(matchOv);
+        }
+      });
+    }
+    if (Array.isArray(window._cleanDxfPieces)) {
+      const matchClean = (window._cleanDxfPieces.at(idx) && window._cleanDxfPieces.at(idx).name === oldName) ? window._cleanDxfPieces.at(idx) : window._cleanDxfPieces.find(it => (oldId && it.id === oldId) || it.name === oldName);
+      syncPieceProps(matchClean);
+    }
+  } else {
+    if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList) && colorwayList.at(activeColorwayIdx)?.pieces?.at(idx)) {
+      syncPieceProps(colorwayList.at(activeColorwayIdx).pieces.at(idx));
+    }
+    window._cwCustomOverrides[curKey] = JSON.parse(JSON.stringify(parsedPieces));
   }
 
   closeQuickPatternEditor();
   if (typeof renderPieceMappingList === "function") renderPieceMappingList();
   if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+
+  // Cek apakah sedang membuka mode Preview 1 Layar Penuh
+  const fsModal = document.getElementById("fullScreenModal");
+  const isFsOpen = fsModal && !fsModal.classList.contains("hidden") && fsModal.style.display !== "none";
   if (typeof generateMiniMarker === "function") generateMiniMarker();
+  if (isFsOpen && typeof openFullPreview === "function") {
+    openFullPreview();
+  }
 }
 
 
