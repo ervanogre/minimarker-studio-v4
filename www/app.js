@@ -1177,7 +1177,7 @@ async function exportAllPDF() {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   generatedCanvases.forEach((c, i) => {
     if (i > 0) doc.addPage();
-    doc.addImage(c.toDataURL('image/png'), 'PNG', 5, 5, 287, 200);
+    doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', 5, 5, 287, 200);
   });
   const fileName = 'MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf';
   const saved = await saveFileUniversal(fileName, doc.output('blob'), false);
@@ -1206,12 +1206,24 @@ async function saveAllColorwaysBatch() {
   const prevOpenFull = window.openFullPreview;
   window.openFullPreview = function() {};
   try {
-    for (const cwKey of targetKeys) {
+    for (let idx = 0; idx < targetKeys.length; idx++) {
+      const cwKey = targetKeys[idx];
+      if (typeof appendSyncLog === 'function') {
+        appendSyncLog(`⏳ Memproses PDF (${idx + 1}/${targetKeys.length}): ${cwKey}...`);
+      }
       if (cwKeys.length > 0) { document.getElementById('colorwaySelect').value = cwKey; applyColorwayMapping(); }
       generateMiniMarker();
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      generatedCanvases.forEach((c, i) => { if (i > 0) doc.addPage(); doc.addImage(c.toDataURL('image/png'), 'PNG', 5, 5, 287, 200); });
-      folder.file('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf', doc.output('blob'));
+      generatedCanvases.forEach((c, i) => {
+        if (i > 0) doc.addPage();
+        doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', 5, 5, 287, 200);
+      });
+      const pdfBytes = doc.output('arraybuffer');
+      folder.file('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf', pdfBytes);
+      // Bebaskan memori kanvas & beri jeda 25ms agar RAM HP tidak penuh saat memproses 160+ halaman
+      generatedCanvases.forEach(c => { c.width = 1; c.height = 1; });
+      generatedCanvases = [];
+      await new Promise(r => setTimeout(r, 25));
     }
   } finally {
     window.openFullPreview = prevOpenFull;
