@@ -818,6 +818,8 @@ function generateMiniMarker() {
   const fontFam = document.getElementById('fontFamilySelect')?.value || '"Times New Roman", serif';
   const titleSize = parseInt(document.getElementById('titleFontSize')?.value) || 38;
   const labelSize = parseInt(document.getElementById('labelFontSize')?.value) || 14;
+  const procSize = parseInt(document.getElementById('processFontSize')?.value) || 13;
+  const fabSize = parseInt(document.getElementById('fabricFontSize')?.value) || 14;
   const customCols = document.getElementById('colsSelect')?.value || 'auto';
   const customRows = document.getElementById('rowsSelect')?.value || 'auto';
 
