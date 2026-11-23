@@ -58,20 +58,35 @@ function handleDxfUpload(event) {
   };
   reader.readAsText(file);
 }
-function detectProcessFromText(text) {
-  const up = text.toUpperCase();
-  // Cek jika ada teks langsung memakai tanda hubung '-' seperti AUTOMATION-OCM atau OCM-BORDIR
-  const hyphenMatch = up.match(/\b((?:AUTOMATION|AUTO|OCM|BORDIR|EMBROIDERY|HEAT\s*EMBOSSED|EMBOSS|SILKSCREEN|PRINT)(?:\s*-\s*(?:AUTOMATION|AUTO|OCM|BORDIR|EMBROIDERY|HEAT\s*EMBOSSED|EMBOSS|SILKSCREEN|PRINT))+)\b/);
-  if (hyphenMatch && hyphenMatch.at(1)) {
-    return hyphenMatch.at(1).replace(/\s*-\s*/g, '-').trim();
-  }
-  // Jika dalam 1 komponen ada beberapa kata kunci proses terpisah, gabungkan dengan '-'
+function detectProcessFromText(text, excludeName) {
+  const up = String(text || '').toUpperCase();
+  const skipName = String(excludeName || '').toUpperCase().trim();
   const found = [];
-  if (/AUTOMATION|AUTO\b/.test(up)) found.push('AUTOMATION');
-  if (/OCM\b/.test(up)) found.push('OCM');
-  if (/BORDIR|EMBROIDERY|EMB\b/.test(up)) found.push('BORDIR');
-  if (/HEAT\s*EMBOSS|EMBOSS/.test(up)) found.push('HEAT EMBOSSED');
-  if (/SILKSCREEN|SCREEN\s*PRINT/.test(up)) found.push('SILKSCREEN');
+
+  // 1. Cek setiap segmen teks terpisah di dalam blok DXF (dipisah oleh '|')
+  const segments = up.split('|').map(s => s.trim()).filter(Boolean);
+  segments.forEach(seg => {
+    // Abaikan teks metadata DXF biasa (nama piece, qty, arah serat, fabric, ukuran, kode file)
+    if (skipName && seg === skipName) return;
+    if (/^(SEWING|CUT|BOUNDARY|PIECE|NAME|RVS|REVERSE|GRAIN|GRAINLINE|FOLD|MIRROR|PAIR|L\/R|A\/B|ALL\s*SIZE|SIZE)$/i.test(seg)) return;
+    if (/^(MA|T1|T2|T3|L1|L2|N1|L|R|A|B)$/i.test(seg)) return;
+    if (/^(\d+\s*[X*]|[X*]\s*\d+|\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?)/.test(seg)) return;
+    if (/-S_\d+$/.test(seg) || /^JS[A-Z0-9]{4,}/i.test(seg) || seg.length < 2 || seg.length > 28) return;
+    // Ambil apapun nama proses luar line yang tertulis (PREPARING, OCM, BORDIR, LASER, QUILTING, dll.)
+    if (/^[A-Z][A-Z0-9\s\-\/]{1,26}$/.test(seg) && !found.includes(seg)) {
+      found.push(seg.replace(/\s*-\s*/g, '-'));
+    }
+  });
+
+  // 2. Cadangan: cek kata kunci proses jika tidak tertulis sebagai segmen terpisah
+  if (found.length === 0) {
+    if (/PREPARING|PREP\b/.test(up)) found.push('PREPARING');
+    if (/AUTOMATION|AUTO\b/.test(up)) found.push('AUTOMATION');
+    if (/OCM\b/.test(up)) found.push('OCM');
+    if (/BORDIR|EMBROIDERY|EMB\b/.test(up)) found.push('BORDIR');
+    if (/HEAT\s*EMBOSS|EMBOSS/.test(up)) found.push('HEAT EMBOSSED');
+    if (/SILKSCREEN|SCREEN\s*PRINT/.test(up)) found.push('SILKSCREEN');
+  }
   return found.join('-');
 }
 
@@ -207,7 +222,7 @@ function extractPiecesFromDxf(dxf) {
             }
             return '';
           })(),
-          processLabel: detectProcessFromText(fullText)
+          processLabel: detectProcessFromText(fullText, cleanName)
         });
       }
     }
