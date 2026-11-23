@@ -1,4 +1,4 @@
-name: Publish Public Download Release (APK & EXE)
+name: Publish Public Download Release
 on:
   push:
     branches: [ main, master ]
@@ -17,10 +17,9 @@ jobs:
           node-version: 22
       - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: 21
-      - name: Build APK
-        run: |
+      - run: |
           npm install
           mkdir -p www/libs
           cp node_modules/dxf-parser/dist/dxf-parser.js www/libs/
@@ -29,7 +28,6 @@ jobs:
           cp node_modules/jszip/dist/jszip.min.js www/libs/
           rm -rf android
           npx cap add android
-          sed -i 's|<application|<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\n    <application android:requestLegacyExternalStorage="true"|g' android/app/src/main/AndroidManifest.xml
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../MiniMarker-Studio-V4.apk
@@ -45,8 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build Portable EXE
-        shell: bash
+      - shell: bash
         run: |
           npm install
           npm install --save-dev electron electron-builder
@@ -70,12 +67,10 @@ jobs:
         with:
           path: release-files
           merge-multiple: true
-      - name: Create Public Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: v4-latest
-          name: "MiniMarker Studio V4 (Android APK & Windows Portable EXE)"
-          body: "Unduh langsung versi terbaru untuk HP Android (.apk) atau PC Windows (.exe) tanpa perlu instalasi."
+          name: "MiniMarker Studio V4 (APK & Portable EXE)"
           files: |
             release-files/MiniMarker-Studio-V4.apk
             release-files/MiniMarker-Studio-V4-Portable.exe
