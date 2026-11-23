@@ -286,6 +286,110 @@ function matchSpreadWithBomFA(spreadMap) {
   return Object.keys(excelColorways).length > 0;
 }
 
+function parseBomZNZFormat(workbook) {
+  let added = 0;
+  workbook.SheetNames.forEach(sheetName => {
+    if (/^(WEB|FORM)/i.test(sheetName.trim())) return;
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
+    let hdrMap = null;
+    let colorHeaderName = '';
+    let styleTitle = '';
+
+    rows.forEach(row => {
+      const lineStr = row.join(' ');
+      const mStyle = lineStr.match(/#?(JS[A-Z0-9]{5,10})\b/i);
+      if (mStyle && mStyle.at(1)) styleTitle = mStyle.at(1).toUpperCase();
+
+      const catIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'category');
+      const sizeIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'size');
+      if (catIdx !== -1 && sizeIdx !== -1) {
+        const annotIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'annotation');
+        const annotEngIdx = row.findIndex(c => String(c || '').trim().toLowerCase().startsWith('annotation(eng'));
+        const qtyIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'qty');
+        const matIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'material name');
+        const specIdx = row.findIndex(c => String(c || '').trim().toLowerCase() === 'spec');
+        const colIdx = row.findIndex(c => /^color\s+/i.test(String(c || '').trim()));
+        hdrMap = {
+          annot: annotIdx !== -1 ? annotIdx : 3,
+          annotEng: annotEngIdx !== -1 ? annotEngIdx : 4,
+          cat: catIdx,
+          qty: qtyIdx !== -1 ? qtyIdx : 7,
+          size: sizeIdx,
+          mat: matIdx !== -1 ? matIdx : 9,
+          spec: specIdx !== -1 ? specIdx : 10,
+          color: colIdx !== -1 ? colIdx : 12
+        };
+        const rawHdr = colIdx !== -1 ? String(row.at(colIdx) || '').trim() : '';
+        const mCol = rawHdr.match(/^Color\s+(.+)$/i);
+        colorHeaderName = mCol ? mCol.at(1).trim().toUpperCase() : sheetName.replace(/^FAB-/i, '').trim().toUpperCase();
+        return;
+      }
+
+      if (!hdrMap) return;
+      const cat = String(row.at(hdrMap.cat) || '').trim().toUpperCase();
+      const sizeStr = String(row.at(hdrMap.size) || '').trim();
+      if (!/^(MA|T1|T2|T3|L2|N1)$/.test(cat) || !/^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr)) return;
+
+      const shortCode = String(row.at(hdrMap.annot) || '').trim().toUpperCase();
+      const engDesc = String(row.at(hdrMap.annotEng) || '').trim();
+      const compRaw = engDesc && engDesc !== '_' ? engDesc : shortCode;
+      if (!compRaw) return;
+
+      if (!excelColorways[sheetName]) {
+        excelColorways[sheetName] = {
+          cleanColor: colorHeaderName || sheetName,
+          sheetName: styleTitle ? `${styleTitle} (${colorHeaderName || sheetName})` : sheetName,
+          pieces: [],
+          fabricSpecs: {}
+        };
+      }
+
+      const parts = sizeStr.split(/[*xX]/).map(s => s.trim());
+      const qty = parseInt(row.at(hdrMap.qty)) || parseInt(parts.at(2)) || 1;
+      const mCode = compRaw.match(/_([A-Z]{1,3}\d{2}[A-Z]?)\b/i) || compRaw.match(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?)\b/i);
+      const codes = mCode ? mCode.at(1).toUpperCase().split(/[&,]/).map(s => s.trim()) : [];
+      if (shortCode && shortCode !== '_') codes.push(shortCode);
+
+      let cleanName = compRaw
+        .replace(/_[A-Z]{1,3}\d{2}[A-Z]?$/i, '')
+        .replace(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?).*$/i, '')
+        .trim().toUpperCase();
+      const segs = cleanName.split('-').map(s => s.trim()).filter(Boolean);
+      if (segs.length >= 2 && shortCode && segs.at(0) === shortCode) {
+        cleanName = segs.at(1);
+      }
+
+      const matName = String(row.at(hdrMap.mat) || '').trim().toUpperCase();
+      const matSpec = String(row.at(hdrMap.spec) || '').trim().toUpperCase();
+      const matCol = String(row.at(hdrMap.color) || '').trim().toUpperCase();
+
+      if (cat === 'MA' && matCol && matCol !== '_' && !/^GIỐNG/i.test(matCol)) {
+        excelColorways[sheetName].cleanColor = matCol;
+        excelColorways[sheetName].sheetName = styleTitle ? `${styleTitle} (${matCol})` : matCol;
+      }
+      if (matName && matName !== '_' && !/^GIỐNG/i.test(matName)) {
+        const fullSpec = (matName + ' ' + matSpec + (matCol && matCol !== '_' ? ' (' + matCol + ')' : '')).replace(/\s+/g, ' ').trim();
+        excelColorways[sheetName].fabricSpecs[cat] = fullSpec;
+      }
+
+      excelColorways[sheetName].pieces.push({
+        fabric: cat,
+        name: cleanName || shortCode || compRaw.toUpperCase(),
+        raw: (shortCode + ' ' + compRaw).toUpperCase(),
+        codes,
+        size: parts.at(0) + '*' + parts.at(1),
+        qty
+      });
+      added++;
+    });
+  });
+  if (styleTitle) {
+    const styleInp = document.getElementById('styleNoInput');
+    if (styleInp && !styleInp.value) styleInp.value = styleTitle;
+  }
+  return added > 0;
+}
+
 function handleExcelUpload(event) {
   const file = event.target.files && event.target.files.item(0);
   if (!file) return;
@@ -302,7 +406,11 @@ function handleExcelUpload(event) {
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
         parseBomRows(rows, sheetName.trim());
       });
-      const cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+      let cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+      if (cwKeys.length === 0 && typeof parseBomZNZFormat === 'function') {
+        parseBomZNZFormat(workbook);
+        cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+      }
       if (cwKeys.length > 0) {
         bomTemplates = JSON.parse(JSON.stringify(excelColorways));
         const sel = document.getElementById('colorwaySelect');
