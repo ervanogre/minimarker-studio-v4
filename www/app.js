@@ -1194,7 +1194,25 @@ async function exportAllPNG() {
   if (lastSaved) alert("✅ " + generatedCanvases.length + " file PNG berhasil disimpan ke folder Download!");
 }
 
-async function saveAllColorwaysBatch() {
+function openExportFormatModal() {
+  if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) { alert("Belum ada pola DXF yang dimuat."); return; }
+  const m = document.getElementById('exportFormatModal');
+  if (m) { m.classList.remove('hidden'); m.style.display = 'flex'; }
+  else { saveAllColorwaysBatch('pdf'); }
+}
+
+function closeExportFormatModal() {
+  const m = document.getElementById('exportFormatModal');
+  if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+}
+
+function confirmBatchFormat(fmt) {
+  closeExportFormatModal();
+  saveAllColorwaysBatch(fmt);
+}
+
+async function saveAllColorwaysBatch(format) {
+  if (!format) { openExportFormatModal(); return; }
   if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) { alert("Belum ada pola DXF yang dimuat."); return; }
   const orderNo = (document.getElementById('orderNoInput')?.value || currentStyleName || 'ORDER_MARKER').trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '_');
   const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
@@ -1213,13 +1231,22 @@ async function saveAllColorwaysBatch() {
       }
       if (cwKeys.length > 0) { document.getElementById('colorwaySelect').value = cwKey; applyColorwayMapping(); }
       generateMiniMarker();
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      generatedCanvases.forEach((c, i) => {
-        if (i > 0) doc.addPage();
-        doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', 5, 5, 287, 200);
-      });
-      const pdfBytes = doc.output('arraybuffer');
-      folder.file('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf', pdfBytes);
+      const safeCw = currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_');
+      if (format === 'png') {
+        for (let i = 0; i < generatedCanvases.length; i++) {
+          const pngBlob = await new Promise(res => generatedCanvases[i].toBlob(res, 'image/png'));
+          const suffix = generatedCanvases.length > 1 ? '_Hal' + (i + 1) : '';
+          folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + suffix + '.png', pngBlob);
+        }
+      } else {
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        generatedCanvases.forEach((c, i) => {
+          if (i > 0) doc.addPage();
+          doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', 5, 5, 287, 200);
+        });
+        const pdfBytes = doc.output('arraybuffer');
+        folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + '.pdf', pdfBytes);
+      }
       // Bebaskan memori kanvas & beri jeda 25ms agar RAM HP tidak penuh saat memproses 160+ halaman
       generatedCanvases.forEach(c => { c.width = 1; c.height = 1; });
       generatedCanvases = [];

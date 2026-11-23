@@ -374,5 +374,16 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
       </div>
     </div>
   </div>
+  <div id="exportFormatModal" class="hidden" style="position:fixed; inset:0; z-index:999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:16px;">
+    <div style="width:100%; max-width:360px; background:#141226; border:1.5px solid var(--neon-cyan); border-radius:14px; padding:18px; box-shadow:0 12px 32px rgba(0,245,212,0.28); text-align:center;">
+      <div style="font-size:15px; font-weight:900; color:var(--neon-cyan); margin-bottom:6px;">💾 PILIH FORMAT SIMPAN / DOWNLOAD</div>
+      <div style="font-size:12px; color:#cbd5e1; margin-bottom:14px;">Pilih format file untuk seluruh colorway di dalam folder ZIP:</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+        <button type="button" class="btn" style="margin:0; padding:12px 8px; font-size:13px;" onclick="confirmBatchFormat('pdf')">📄 FORMAT PDF</button>
+        <button type="button" class="btn btn-pink" style="margin:0; padding:12px 8px; font-size:13px;" onclick="confirmBatchFormat('png')">🖼️ FORMAT PNG</button>
+      </div>
+      <button type="button" class="btn btn-secondary" style="margin:0; padding:9px; font-size:12px;" onclick="closeExportFormatModal()">BATAL</button>
+    </div>
+  </div>
 </body>
 </html>
