@@ -324,45 +324,88 @@ function handleExcelUpload(event) {
 function parseBomRows(rows, sheetName) {
   const sheetCodeMatch = sheetName.match(/\(([^)]+)\)/);
   const defaultColor = sheetCodeMatch ? sheetCodeMatch.at(1).trim().toUpperCase() : sheetName;
-  let cwKey = sheetName, leftFab = 'MA', midFab = 'L2', blockCount = 0, isConsumptionTable = false;
+  let cwKey = sheetName, leftFab = 'MA', midFab = 'L2', blockCount = 0;
+  let isConsumptionTable = false, pendingColorCode = "", inheritedSpecByCat = {};
+  let colMap = { annot: 3, annotEng: 4, cat: 5, qty: 7, size: 8, mat: 9, spec: 10, color: 12 };
   excelColorways[cwKey] = { cleanColor: defaultColor, sheetName, pieces: [], fabricSpecs: {} };
 
   rows.forEach(row => {
     const lineStr = row.join(' ');
-    const jsCode = lineStr.match(/\b(JS[A-Z0-9]{5,10})\b/i);
+    const jsCode = lineStr.match(/#?(JS[A-Z0-9]{5,10})\b/i);
     if (jsCode && jsCode.at(1)) {
       currentStyleName = jsCode.at(1).toUpperCase();
       const styleInput = document.getElementById('styleNoInput');
       if (styleInput && !styleInput.value) styleInput.value = currentStyleName;
     }
+    const catHeaderIdx = row.findIndex(c => String(c || "").trim() === "Category");
+    const sizeHeaderIdx = row.findIndex(c => String(c || "").trim() === "Size");
+    if (catHeaderIdx !== -1 && sizeHeaderIdx !== -1) {
+      isConsumptionTable = true; inheritedSpecByCat = {};
+      const annotIdx = row.findIndex(c => String(c || "").trim() === "Annotation");
+      const annotEngIdx = row.findIndex(c => String(c || "").trim().startsWith("Annotation(ENG"));
+      const qtyIdx = row.findIndex(c => String(c || "").trim() === "Qty");
+      const matIdx = row.findIndex(c => String(c || "").trim() === "Material name");
+      const specIdx = row.findIndex(c => String(c || "").trim() === "Spec");
+      const colorHdrIdx = row.findIndex(c => /^Color\s+/i.test(String(c || "").trim()));
+      colMap = {
+        annot: annotIdx !== -1 ? annotIdx : 3,
+        annotEng: annotEngIdx !== -1 ? annotEngIdx : (annotIdx !== -1 ? annotIdx + 1 : 4),
+        cat: catHeaderIdx, qty: qtyIdx !== -1 ? qtyIdx : 7, size: sizeHeaderIdx,
+        mat: matIdx !== -1 ? matIdx : 9, spec: specIdx !== -1 ? specIdx : 10, color: colorHdrIdx !== -1 ? colorHdrIdx : 12
+      };
+      const rawColorHdr = colorHdrIdx !== -1 ? String(row.at(colorHdrIdx) || "").trim() : "";
+      const mHdrCode = rawColorHdr.match(/^Color\s+(.+)$/i);
+      pendingColorCode = mHdrCode ? mHdrCode.at(1).trim().toUpperCase() : "";
+      blockCount++;
+      cwKey = blockCount === 1 ? sheetName : (sheetName + " #" + blockCount);
+      const initName = pendingColorCode || defaultColor;
+      excelColorways[cwKey] = { cleanColor: initName, sheetName: currentStyleName ? `${currentStyleName} (${initName})` : sheetName, pieces: [], fabricSpecs: {} };
+      return;
+    }
     const colorM = lineStr.match(/\bCOLOR(?:WAY)?\s*:\s*([^,;]+?)(?:DATE|PERSON|PER SON|STYLE|$)/i);
     if (colorM && colorM.at(1) && colorM.at(1).trim() && !/NAME|CODE|WIDTH|FABRIC|SPEC|QTY/i.test(colorM.at(1))) {
       const foundColor = colorM.at(1).trim().replace(/^\d+[\.\)]\s*/, '').toUpperCase();
-      blockCount++;
-      cwKey = blockCount === 1 ? sheetName : (sheetName + ' #' + blockCount);
+      blockCount++; cwKey = blockCount === 1 ? sheetName : (sheetName + ' #' + blockCount);
       excelColorways[cwKey] = { cleanColor: foundColor, sheetName, pieces: [], fabricSpecs: {} };
       leftFab = 'MA'; midFab = 'L2'; isConsumptionTable = false;
     }
-    if (String(row.at(1) || '').includes('Annotation') && String(row.at(4) || '').includes('Category')) {
-      isConsumptionTable = true; return;
-    }
     if (isConsumptionTable) {
-      const cat = String(row.at(4) || '').trim().toUpperCase();
-      const sizeStr = String(row.at(2) || '').trim();
-      const compRaw = String(row.at(1) || '').trim();
+      // Deteksi otomatis pergeseran +1 kolom (seperti pada BOM ZNZ yang memiliki kolom Piece No / merge cell)
+      let shift = 0;
+      const rawCat0 = String(row.at(colMap.cat) || '').trim().toUpperCase();
+      const rawCat1 = String(row.at(colMap.cat + 1) || '').trim().toUpperCase();
+      if (!/^(MA|T1|T2|T3|L2|N1)$/.test(rawCat0) && /^(MA|T1|T2|T3|L2|N1)$/.test(rawCat1)) {
+        shift = 1;
+      }
+      const cat = String(row.at(colMap.cat + shift) || '').trim().toUpperCase();
+      const sizeStr = String(row.at(colMap.size + shift) || '').trim();
+      const shortCode = String(row.at(colMap.annot + shift) || '').trim();
+      const engDesc = String(row.at(colMap.annotEng + shift) || '').trim();
+      const compRaw = engDesc && engDesc !== "_" ? engDesc : shortCode;
       if (/^(MA|T1|T2|T3|L2|N1)$/.test(cat) && /^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr) && compRaw) {
         const parts = sizeStr.split(/[*xX]/).map(s => s.trim());
-        const qty = parseInt(row.at(3)) || parseInt(parts.at(2)) || 1;
-        const mCode = compRaw.match(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?)\b/i) || compRaw.match(/\(([^)]+)\)/);
+        const qty = parseInt(row.at(colMap.qty + shift)) || parseInt(parts.at(2)) || 1;
+        const mCode = compRaw.match(/_([A-Z]{1,3}\d{2}[A-Z]?)\b/i) || compRaw.match(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?)\b/i) || compRaw.match(/\(([^)]+)\)/);
         const codes = mCode ? mCode.at(1).toUpperCase().split(/[&,]/).map(s => s.trim()) : [];
-        const cleanName = compRaw.replace(/^[A-Z\+]{2,12}-/, '').replace(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?).*$/i, '').trim().toUpperCase();
-        excelColorways[cwKey].pieces.push({ fabric: cat, name: cleanName || compRaw.toUpperCase(), raw: compRaw.toUpperCase(), codes, size: parts.at(0) + '*' + parts.at(1), qty });
-        const matName = String(row.at(6) || '').trim().toUpperCase();
-        const matSpec = String(row.at(7) || '').trim().toUpperCase();
-        const matCol = String(row.at(9) || '').trim().toUpperCase();
-        if (matName && matName !== '_') {
-          excelColorways[cwKey].fabricSpecs[cat] = (matName + ' ' + matSpec + (matCol && matCol !== '_' ? ' (' + matCol + ')' : '')).replace(/\s+/g, ' ').trim();
+        if (shortCode && shortCode !== "_") codes.push(shortCode.toUpperCase());
+        let cleanName = compRaw.replace(/_[A-Z]{1,3}\d{2}[A-Z]?$/i, '').replace(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?).*$/i, '').trim().toUpperCase();
+        const dashSegs = cleanName.split('-').map(s => s.trim()).filter(Boolean);
+        if (dashSegs.length >= 3 && shortCode && dashSegs.at(0) === shortCode.toUpperCase()) cleanName = dashSegs.at(1);
+        else if (dashSegs.length >= 2 && shortCode && dashSegs.at(0) === shortCode.toUpperCase()) cleanName = dashSegs.slice(1).join(' ');
+        const matName = String(row.at(colMap.mat + shift) || '').trim().toUpperCase();
+        const matSpec = String(row.at(colMap.spec + shift) || '').trim().toUpperCase();
+        const matCol = String(row.at(colMap.color + shift) || '').trim().toUpperCase();
+        if (cat === "MA" && matCol && matCol !== "_" && pendingColorCode && (matCol.includes(pendingColorCode) || excelColorways[cwKey].cleanColor === pendingColorCode)) {
+          excelColorways[cwKey].cleanColor = matCol;
+          excelColorways[cwKey].sheetName = currentStyleName ? `${currentStyleName} (${matCol})` : matCol;
         }
+        if (matName && matName !== "_") {
+          const fullSpec = (matName + ' ' + matSpec + (matCol && matCol !== "_" ? ' (' + matCol + ')' : '')).replace(/\s+/g, ' ').trim();
+          inheritedSpecByCat[cat] = fullSpec; excelColorways[cwKey].fabricSpecs[cat] = fullSpec;
+        } else if (inheritedSpecByCat[cat] && !excelColorways[cwKey].fabricSpecs[cat]) {
+          excelColorways[cwKey].fabricSpecs[cat] = inheritedSpecByCat[cat];
+        }
+        excelColorways[cwKey].pieces.push({ fabric: cat, name: cleanName || compRaw.toUpperCase(), raw: (shortCode + " " + compRaw).toUpperCase(), codes, size: parts.at(0) + '*' + parts.at(1), qty });
       }
       return;
     }
