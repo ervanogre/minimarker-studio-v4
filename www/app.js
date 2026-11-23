@@ -288,12 +288,12 @@ function matchSpreadWithBomFA(spreadMap) {
 
 function parseBomZNZFormat(workbook) {
   let added = 0;
+  let styleTitle = "";
   workbook.SheetNames.forEach(sheetName => {
     if (/^(WEB|FORM)/i.test(sheetName.trim())) return;
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
     let hdrMap = null;
     let colorHeaderName = '';
-    let styleTitle = '';
 
     rows.forEach(row => {
       const lineStr = row.join(' ');
