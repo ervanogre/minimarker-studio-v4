@@ -202,7 +202,7 @@
         </div>
       </div>
       <div class="card">
-        <div class="card-title" style="margin-bottom:8px;">🎛️ Pengaturan Font &amp; Grid A4</div>
+        <div id="fontGridCard" class="card-title" style="margin-bottom:8px;">🎛️ Pengaturan Font &amp; Grid A4</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div>
             <label style="font-size:11px; color:var(--muted);">JENIS FONT:</label>
@@ -215,40 +215,40 @@
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">JUDUL HEADER:</label>
-            <input type="number" id="titleFontSize" value="38" min="18" max="72" />
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepFontVal('titleFontSize', -2)" style="padding:6px 10px; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:6px; font-weight:900;">-</button><input type="number" id="titleFontSize" value="38" min="18" max="72" style="text-align:center;" /><button type="button" onclick="stepFontVal('titleFontSize', 2)" style="padding:6px 10px; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:6px; font-weight:900;">+</button></div>
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">TEKS POLA (UKURAN/NAMA):</label>
-            <input type="number" id="labelFontSize" value="14" min="8" max="36" />
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepFontVal('labelFontSize', -1)" style="padding:6px 10px; background:#07060e; color:var(--neon-yellow); border:1px solid var(--neon-yellow); border-radius:6px; font-weight:900;">-</button><input type="number" id="labelFontSize" value="14" min="8" max="36" style="text-align:center;" /><button type="button" onclick="stepFontVal('labelFontSize', 1)" style="padding:6px 10px; background:#07060e; color:var(--neon-yellow); border:1px solid var(--neon-yellow); border-radius:6px; font-weight:900;">+</button></div>
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">KETERANGAN LUAR LINE:</label>
-            <input type="number" id="processFontSize" value="13" min="8" max="36" />
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepFontVal('processFontSize', -1)" style="padding:6px 10px; background:#07060e; color:var(--neon-pink); border:1px solid var(--neon-pink); border-radius:6px; font-weight:900;">-</button><input type="number" id="processFontSize" value="13" min="8" max="36" style="text-align:center;" /><button type="button" onclick="stepFontVal('processFontSize', 1)" style="padding:6px 10px; background:#07060e; color:var(--neon-pink); border:1px solid var(--neon-pink); border-radius:6px; font-weight:900;">+</button></div>
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">KETERANGAN FABRIC:</label>
-            <input type="number" id="fabricFontSize" value="14" min="8" max="36" />
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepFontVal('fabricFontSize', -1)" style="padding:6px 10px; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:6px; font-weight:900;">-</button><input type="number" id="fabricFontSize" value="14" min="8" max="36" style="text-align:center;" /><button type="button" onclick="stepFontVal('fabricFontSize', 1)" style="padding:6px 10px; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:6px; font-weight:900;">+</button></div>
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">KOLOM / LEMBAR:</label>
-            <select id="colsSelect">
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepSelectVal('colsSelect', -1)" style="padding:6px 10px; background:#07060e; color:var(--neon-yellow); border:1px solid var(--neon-yellow); border-radius:6px; font-weight:900;">-</button><select id="colsSelect" style="flex:1;">
               <option value="auto">Otomatis</option>
               <option value="4">4 Kolom</option>
               <option value="5">5 Kolom</option>
               <option value="6">6 Kolom</option>
               <option value="7">7 Kolom</option>
               <option value="8">8 Kolom</option>
-            </select>
+            </select><button type="button" onclick="stepSelectVal('colsSelect', 1)" style="padding:6px 10px; background:#07060e; color:var(--neon-yellow); border:1px solid var(--neon-yellow); border-radius:6px; font-weight:900;">+</button></div>
           </div>
           <div>
             <label style="font-size:11px; color:var(--muted);">BARIS / LEMBAR:</label>
-            <select id="rowsSelect">
+            <div style="display:flex; gap:4px; align-items:center;"><button type="button" onclick="stepSelectVal('rowsSelect', -1)" style="padding:6px 10px; background:#07060e; color:var(--neon-pink); border:1px solid var(--neon-pink); border-radius:6px; font-weight:900;">-</button><select id="rowsSelect" style="flex:1;">
               <option value="auto">Otomatis</option>
               <option value="2">2 Baris</option>
               <option value="3">3 Baris</option>
               <option value="4">4 Baris</option>
               <option value="5">5 Baris</option>
-            </select>
+            </select><button type="button" onclick="stepSelectVal('rowsSelect', 1)" style="padding:6px 10px; background:#07060e; color:var(--neon-pink); border:1px solid var(--neon-pink); border-radius:6px; font-weight:900;">+</button></div>
           </div>
         </div>
       </div>

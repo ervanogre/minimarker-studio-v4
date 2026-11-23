@@ -1035,7 +1035,7 @@ function generateMiniMarker() {
         const sepW = ctx.measureText(sep).width;
         const partWidths = parts.map(pt => ctx.measureText(pt).width);
         const totalTextW = partWidths.reduce((a, b) => a + b, 0) + sepW * Math.max(parts.length - 1, 0);
-        let curTextX = centerDrawX - (totalTextW / 2);
+        let curTextX = Math.max(numCx + circleR + 6, centerDrawX - (totalTextW / 2));
         parts.forEach((pt, pIdx) => {
           ctx.fillStyle = getProcessColor(pt);
           ctx.fillText(pt, curTextX, finalY - 6);
@@ -1086,15 +1086,22 @@ function generateMiniMarker() {
         }
       }
 
+      // Jaga jarak aman agar tulisan ukuran & nama pola tidak pernah bertumpuk dengan lingkaran nomor
+      const circleBottom = numCy + circleR;
+      const circleRight = numCx + circleR;
+      let py = Math.max(finalY + finalH + labelSize + 4, circleBottom + labelSize + 4);
+      const safeLeftX = (py - labelSize < circleBottom + 4) ? (circleRight + 6) : (cx + 5);
+      const safeRightX = cx + cellW - 5;
+      const maxCellW = Math.max(safeRightX - safeLeftX, 42);
+      const safeTextX = Math.max(safeLeftX + 18, (safeLeftX + safeRightX) / 2);
+
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'center';
-      const maxCellW = Math.max(cellW - 10, 50);
-      let py = finalY + finalH + labelSize + 3;
       ctx.font = 'bold ' + labelSize + 'px ' + fontFam;
-      wrapCanvasLines(ctx, piece.sizeText, maxCellW).forEach(l => { ctx.fillText(l, centerDrawX, py); py += Math.round(labelSize * 1.15); });
+      wrapCanvasLines(ctx, piece.sizeText, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(labelSize * 1.15); });
       const nf = Math.max(labelSize - 2, 8);
       ctx.font = nf + 'px ' + fontFam;
-      wrapCanvasLines(ctx, piece.name, maxCellW).forEach(l => { ctx.fillText(l, centerDrawX, py); py += Math.round(nf * 1.15); });
+      wrapCanvasLines(ctx, piece.name, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(nf * 1.15); });
     });
 
     let legY = boxY + boxH + fabHeaderSize + 12;
@@ -1463,7 +1470,7 @@ function openToolMode(mode) {
     if (panelUpload) {
       panelUpload.classList.remove('hidden');
       Array.from(panelUpload.children).forEach(el => {
-        if (el.id !== 'resultArea') el.classList.add('hidden');
+        if (el.id !== 'resultArea' && !el.querySelector('#fontGridCard')) el.classList.add('hidden');
       });
     }
     if (resultArea && typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0) {
@@ -2065,4 +2072,26 @@ if (typeof applyColorwayMapping === "function" && !window._wrappedApplyCwMapping
       if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
     }
   };
+}
+
+
+function stepFontVal(id, delta) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  const minV = parseInt(inp.min) || 8;
+  const maxV = parseInt(inp.max) || 72;
+  const curV = parseInt(inp.value) || 14;
+  inp.value = Math.min(maxV, Math.max(minV, curV + delta));
+  if (typeof renderPreviewSilent === "function") renderPreviewSilent();
+  else if (typeof generateMiniMarker === "function") generateMiniMarker();
+}
+
+
+function stepSelectVal(id, delta) {
+  const sel = document.getElementById(id);
+  if (!sel || !sel.options || sel.options.length === 0) return;
+  const nextIdx = Math.min(sel.options.length - 1, Math.max(0, sel.selectedIndex + delta));
+  sel.selectedIndex = nextIdx;
+  if (typeof renderPreviewSilent === "function") renderPreviewSilent();
+  else if (typeof generateMiniMarker === "function") generateMiniMarker();
 }
