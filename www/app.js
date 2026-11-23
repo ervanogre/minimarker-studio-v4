@@ -1632,9 +1632,24 @@ function parseMasterOrderCsv(rows) {
   const idxPcs = hdr.findIndex(h => /^PCS$/i.test(h));
   const idxKode = hdr.findIndex(h => /^Kode$/i.test(h));
 
-  const targetStyleClean = (currentStyleName || '').replace(/\s*\(.*\)/, '').trim().toUpperCase();
+  const inpStyle = (document.getElementById('styleNoInput')?.value || '').trim().toUpperCase();
+  const bomFirstSheet = Object.values(bomTemplates || excelColorways || {}).find(c => !c.isMasterOrder)?.sheetName || '';
+  const mBomStyle = String(bomFirstSheet).toUpperCase().match(/JS[A-Z0-9]{5,10}/);
+  let targetStyleClean = (inpStyle || currentStyleName || (mBomStyle ? mBomStyle : '') || '').replace(/\s*\(.*\)/, '').trim().toUpperCase();
+  if (targetStyleClean === 'MINI_MARKER' || targetStyleClean === 'SAMPLE') targetStyleClean = mBomStyle ? mBomStyle : '';
+
   const dataRows = rows.slice(headerIdx + 1).filter(r => r.length > 5 && String(r.at(idxStyle) || '').trim());
-  const matched = dataRows.filter(r => String(r.at(idxStyle) || '').toUpperCase().includes(targetStyleClean));
+  let matched = [];
+  if (targetStyleClean) {
+    matched = dataRows.filter(r => {
+      const rowStyle = String(r.at(idxStyle) || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase();
+      return rowStyle === targetStyleClean || rowStyle.includes(targetStyleClean) || (targetStyleClean.length >= 3 && rowStyle.endsWith(targetStyleClean));
+    });
+  }
+  if (targetStyleClean && matched.length === 0) {
+    alert("Style No '" + targetStyleClean + "' tidak ditemukan di file Planning Spread ini.");
+    return false;
+  }
   const activeRows = matched.length > 0 ? matched : dataRows;
   if (activeRows.length === 0) return false;
 
