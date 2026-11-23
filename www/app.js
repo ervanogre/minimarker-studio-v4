@@ -786,6 +786,28 @@ function renderDynamicProcessColors() {
       '<input type="color" value="' + col + '" data-proc="' + proc + '" onchange="updateProcessColorValue(this.dataset.proc, this.value)" style="width:40px;height:28px;border:1px solid #334155;border-radius:6px;background:none;padding:0;" /></div>';
   }).join('');
 }
+function wrapCanvasLines(ctx, text, maxW) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width <= maxW) { cur = test; }
+    else {
+      if (cur) lines.push(cur);
+      if (ctx.measureText(w).width > maxW) {
+        let part = '';
+        for (const ch of w) {
+          if (ctx.measureText(part + ch).width <= maxW) part += ch;
+          else { if (part) lines.push(part); part = ch; }
+        }
+        cur = part;
+      } else { cur = w; }
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
 function generateMiniMarker() {
   if (parsedPieces.length === 0) {
     alert("Silakan unggah file DXF terlebih dahulu atau klik 'Coba Contoh'.");
@@ -929,11 +951,25 @@ function generateMiniMarker() {
     ctx.fillStyle = '#000000';
     ctx.font = 'bold ' + titleSize + 'px ' + fontFam;
     ctx.textAlign = 'center';
-    ctx.fillText(styleVal + ' (' + currentColorwayName + ')', canvas.width / 2, 48);
+    const titleLines = wrapCanvasLines(ctx, styleVal + ' (' + currentColorwayName + ')', canvas.width - 120);
+    const titleLineH = Math.round(titleSize * 1.15);
+    titleLines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, 16 + titleLineH * (i + 1)));
 
-    const footerLineH = Math.max(labelSize + 11, 24);
-    const footerH = 42 + (activeFabrics.length * footerLineH);
-    const boxX = 36, boxY = 76, boxW = canvas.width - 72, boxH = canvas.height - boxY - footerH - 22;
+    const bomSpecs = (bom && bom.fabricSpecs) || {};
+    const defaultSpecs = { MA: 'POLY 600D SOLID 100% RECYCLED 60" PU (' + currentColorwayName + ')', T1: 'POLY 600D SOLID 100% RECYCLED 60" PU (BLACK 008)', T2: 'PU LEATHER 52" (' + currentColorwayName + ')', T3: 'NON-WOVEN FABRIC 60" 100G (WHITE)', L2: 'POLY 200D SOLUTION DYE EMBOSSED 100% RECYCLED 58" PU (INTERNAL)', N1: 'POLY 840D MESH 60" (' + currentColorwayName + ')' };
+    const fabLineH = Math.max(Math.round(fabSize * 1.32), 20);
+    const fabHeaderSize = fabSize + 2;
+    ctx.font = fabSize + 'px ' + fontFam;
+    const footerEntries = activeFabrics.map(fab => {
+      const num = fabricNumberMap[fab];
+      const compCount = sortedPieces.filter(p => p.fabric === fab).length;
+      const specText = (bomSpecs[fab] || defaultSpecs[fab] || fab).replace(/\bWIDTH\s*VAI\b|\bWIDTH\b|\bVAI\b/gi, '').replace(/\s+/g, ' ').trim();
+      return wrapCanvasLines(ctx, num + '. ' + specText + ' (' + compCount + ' KOMPONEN)', canvas.width - 80);
+    });
+    const totalFooterLines = footerEntries.reduce((a, b) => a + Math.max(b.length, 1), 0);
+    const footerH = Math.round(fabHeaderSize * 1.5) + (totalFooterLines * fabLineH) + 14;
+    const boxX = 36, boxY = 20 + (titleLines.length * titleLineH) + ((orderVal || pages.length > 1) ? Math.max(labelSize + 14, 24) : 10);
+    const boxW = canvas.width - 72, boxH = Math.max(220, canvas.height - boxY - footerH - 18);
 
     if (orderVal) {
       ctx.font = 'bold ' + (labelSize + 3) + 'px ' + fontFam;
@@ -961,7 +997,7 @@ function generateMiniMarker() {
 
       const circleR = Math.min(15, cellH * 0.082);
       const topSpace = piece.processLabel ? (labelSize + 10) : 8;
-      const bottomSpace = (labelSize * 2) + 16;
+      const bottomSpace = Math.round(labelSize * 3.1) + 18;
       const leftOffset = (circleR * 2) + 8;
       const maxDrawW = Math.max(cellW - leftOffset - 44, 24);
       const maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
@@ -991,7 +1027,7 @@ function generateMiniMarker() {
 
       if (piece.processLabel) {
         const parts = piece.processLabel.toUpperCase().split('-').map(s => s.trim()).filter(Boolean);
-        ctx.font = '900 ' + Math.max(labelSize, 11) + 'px ' + fontFam;
+        ctx.font = '900 ' + Math.max(procSize, 9) + 'px ' + fontFam;
         ctx.textAlign = 'left';
         const sep = ' - ';
         const sepW = ctx.measureText(sep).width;
@@ -1050,38 +1086,23 @@ function generateMiniMarker() {
 
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'center';
-      const textBaseY = finalY + finalH + labelSize + 3;
+      const maxCellW = Math.max(cellW - 10, 50);
+      let py = finalY + finalH + labelSize + 3;
       ctx.font = 'bold ' + labelSize + 'px ' + fontFam;
-      ctx.fillText(piece.sizeText, centerDrawX, textBaseY);
-      ctx.font = Math.max(labelSize - 2, 9) + 'px ' + fontFam;
-      ctx.fillText(piece.name.substring(0, 22), centerDrawX, textBaseY + labelSize + 2);
+      wrapCanvasLines(ctx, piece.sizeText, maxCellW).forEach(l => { ctx.fillText(l, centerDrawX, py); py += Math.round(labelSize * 1.15); });
+      const nf = Math.max(labelSize - 2, 8);
+      ctx.font = nf + 'px ' + fontFam;
+      wrapCanvasLines(ctx, piece.name, maxCellW).forEach(l => { ctx.fillText(l, centerDrawX, py); py += Math.round(nf * 1.15); });
     });
 
-    let legY = boxY + boxH + labelSize + 15;
+    let legY = boxY + boxH + fabHeaderSize + 12;
     ctx.textAlign = 'left';
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold ' + (labelSize + 2) + 'px ' + fontFam;
+    ctx.font = 'bold ' + fabHeaderSize + 'px ' + fontFam;
     ctx.fillText('KETERANGAN :', boxX, legY);
-    legY += footerLineH;
-
-    const bomSpecs = (bom && bom.fabricSpecs) || {};
-    const defaultSpecs = {
-      MA: 'POLY 600D SOLID 100% RECYCLED 60" PU (' + currentColorwayName + ')',
-      T1: 'POLY 600D SOLID 100% RECYCLED 60" PU (BLACK 008)',
-      T2: 'PU LEATHER 52" (' + currentColorwayName + ')',
-      T3: 'NON-WOVEN FABRIC 60" 100G (WHITE)',
-      L2: 'POLY 200D SOLUTION DYE EMBOSSED 100% RECYCLED 58" PU (INTERNAL)',
-      N1: 'POLY 840D MESH 60" (' + currentColorwayName + ')'
-    };
-
-    ctx.font = (labelSize + 1) + 'px ' + fontFam;
-    activeFabrics.forEach(fab => {
-      const num = fabricNumberMap[fab];
-      const compCount = sortedPieces.filter(p => p.fabric === fab).length;
-      const specText = (bomSpecs[fab] || defaultSpecs[fab] || fab).replace(/\bWIDTH\s*VAI\b|\bWIDTH\b|\bVAI\b/gi, '').replace(/\s+/g, ' ').trim();
-      ctx.fillText(num + '. ' + specText + ' (' + compCount + ' KOMPONEN)', boxX, legY);
-      legY += footerLineH;
-    });
+    legY += Math.round(fabHeaderSize * 1.3);
+    ctx.font = fabSize + 'px ' + fontFam;
+    footerEntries.forEach(lines => lines.forEach(l => { ctx.fillText(l, boxX, legY); legY += fabLineH; }));
 
     container.appendChild(canvas);
     generatedCanvases.push(canvas);
