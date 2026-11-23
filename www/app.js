@@ -1094,11 +1094,11 @@ function generateMiniMarker() {
   openFullPreview();
 }
 async function saveFileUniversal(fileName, blobOrDataUrl, isDataUrl = false) {
-  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-    try {
-      const { Filesystem } = window.Capacitor.Plugins;
+  try {
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+      const { Filesystem, Share } = window.Capacitor.Plugins || {};
       if (!Filesystem) {
-        alert("Plugin Filesystem belum aktif. Pastikan build APK terbaru.");
+        alert("Plugin Filesystem belum aktif. Silakan unduh APK terbaru dari GitHub Releases.");
         return null;
       }
       let base64Data = "";
@@ -1112,35 +1112,62 @@ async function saveFileUniversal(fileName, blobOrDataUrl, isDataUrl = false) {
           reader.readAsDataURL(blobOrDataUrl);
         });
       }
+      let savedUri = null;
+      let savedLocation = "";
       try {
-        await Filesystem.writeFile({
-          path: "Download/" + fileName,
-          data: base64Data,
-          directory: "EXTERNAL_STORAGE",
-          recursive: true
-        });
-        return "Internal Storage/Download/" + fileName;
-      } catch (e1) {
-        await Filesystem.writeFile({
+        const resDoc = await Filesystem.writeFile({
           path: "MiniMarker/" + fileName,
           data: base64Data,
           directory: "DOCUMENTS",
           recursive: true
         });
-        return "Internal Storage/Documents/MiniMarker/" + fileName;
+        savedUri = resDoc.uri;
+        savedLocation = "Documents/MiniMarker/" + fileName;
+      } catch (eDoc) {
+        const resCache = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: "CACHE",
+          recursive: true
+        });
+        savedUri = resCache.uri;
+        savedLocation = "Cache/" + fileName;
       }
-    } catch (err) {
-      alert("Gagal menyimpan file: " + (err.message || err));
-      return null;
+      if (Share && savedUri) {
+        try {
+          await Share.share({
+            title: fileName,
+            text: "MiniMarker Output: " + fileName,
+            url: savedUri,
+            dialogTitle: "Simpan atau Bagikan " + fileName
+          });
+        } catch (shareErr) {
+          console.log("Share dialog ditutup:", shareErr);
+        }
+      }
+      return savedLocation;
+    } else {
+      let blob = blobOrDataUrl;
+      if (isDataUrl) {
+        const res = await fetch(blobOrDataUrl);
+        blob = await res.blob();
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.style.display = "none";
+      link.download = fileName;
+      link.href = blobUrl;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 2500);
+      return fileName;
     }
-  } else {
-    const link = document.createElement("a");
-    link.download = fileName;
-    link.href = isDataUrl ? blobOrDataUrl : URL.createObjectURL(blobOrDataUrl);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    return fileName;
+  } catch (err) {
+    alert("Gagal menyimpan file: " + (err.message || err));
+    return null;
   }
 }
 
@@ -1176,12 +1203,18 @@ async function saveAllColorwaysBatch() {
 
   const zip = new JSZip();
   const folder = zip.folder(orderNo);
-  for (const cwKey of targetKeys) {
-    if (cwKeys.length > 0) { document.getElementById('colorwaySelect').value = cwKey; applyColorwayMapping(); }
-    generateMiniMarker();
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    generatedCanvases.forEach((c, i) => { if (i > 0) doc.addPage(); doc.addImage(c.toDataURL('image/png'), 'PNG', 5, 5, 287, 200); });
-    folder.file('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf', doc.output('blob'));
+  const prevOpenFull = window.openFullPreview;
+  window.openFullPreview = function() {};
+  try {
+    for (const cwKey of targetKeys) {
+      if (cwKeys.length > 0) { document.getElementById('colorwaySelect').value = cwKey; applyColorwayMapping(); }
+      generateMiniMarker();
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      generatedCanvases.forEach((c, i) => { if (i > 0) doc.addPage(); doc.addImage(c.toDataURL('image/png'), 'PNG', 5, 5, 287, 200); });
+      folder.file('MiniMarker_' + currentStyleName + '_' + currentColorwayName.replace(/[^A-Z0-9_\-]/gi, '_') + '.pdf', doc.output('blob'));
+    }
+  } finally {
+    window.openFullPreview = prevOpenFull;
   }
   closeFullPreview();
   const zipBlob = await zip.generateAsync({ type: 'blob' });
