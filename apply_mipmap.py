@@ -15,4 +15,8 @@ if os.path.isdir(res_dir):
         d = os.path.join(res_dir, folder)
         os.makedirs(d, exist_ok=True)
         fg.resize((px, px), Image.LANCZOS).save(os.path.join(d, "ic_launcher_foreground.png"))
-    print("ANDROID MIPMAP ICONS UPDATED!")
+    val_dir = os.path.join(res_dir, "values")
+    os.makedirs(val_dir, exist_ok=True)
+    with open(os.path.join(val_dir, "ic_launcher_background.xml"), "w") as f:
+        f.write('<?xml version="1.0" encoding="utf-8"?><resources><color name="ic_launcher_background">#0B0D14</color></resources>')
+    print("ANDROID LAUNCHER ICONS + ADAPTIVE BG UPDATED!")
