@@ -735,7 +735,7 @@ function applyColorwayMapping() {
       const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
       const dxfHasSpecificFab = /^(N(?:[1-9]|1[0-2])|L(?:[1-9]|10)|T(?:[1-9]|10))$/.test(String(p.fabric || ''));
       const fabMismatch = dxfHasSpecificFab && b.fabric && b.fabric !== p.fabric;
-      if (!fabMismatch && minDiff <= 2.2) {
+      if (!fabMismatch && minDiff <= 4.2) {
         let score = minDiff + (b.used ? 30 : 0) + (b.idx * 0.015);
         if (b.codes && b.codes.some(c => c.length >= 2 && up.includes(c))) score -= 15;
         if (b.fabric === p.fabric) score -= 4;
