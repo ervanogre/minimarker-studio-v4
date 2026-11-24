@@ -30,7 +30,8 @@ jobs:
           npx cap add android
           sed -i 's|<application|<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\n    <application android:requestLegacyExternalStorage="true"|g' android/app/src/main/AndroidManifest.xml
           npx cap sync android
-          pip install pillow && python3 apply_mipmap.py
+          npx cap sync android,          pip install --break-system-packages pillow 2>/dev/null || pip install pillow
+          npx cap sync android,          python3 apply_mipmap.py
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug

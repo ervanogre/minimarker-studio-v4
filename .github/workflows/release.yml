@@ -29,8 +29,8 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap sync android
-          pip install pillow && python3 apply_mipmap.py
-          cd android && chmod +x gradlew && pip install pillow && python3 apply_mipmap.py
+          npx cap sync android,          pip install --break-system-packages pillow 2>/dev/null || pip install pillow
+          npx cap sync android,          python3 apply_mipmap.py
           ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../MiniMarker-Studio-V4.apk
       - uses: actions/upload-artifact@v4
