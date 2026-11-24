@@ -47,6 +47,8 @@ function handleDxfUpload(event) {
       const parser = new ParserClass();
       const dxf = parser.parseSync(e.target.result);
       parsedPieces = extractPiecesFromDxf(dxf);
+      window._cleanDxfPieces = JSON.parse(JSON.stringify(parsedPieces));
+      window._menu1MasterOrderMap = {};
       document.getElementById('dxfZone').classList.add('loaded');
       document.getElementById('dxfStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + parsedPieces.length + ' komponen unik)';
       if (Object.keys(excelColorways).length > 0) applyColorwayMapping();
@@ -690,6 +692,9 @@ function parseBomRows(rows, sheetName) {
 function applyColorwayMapping() {
   const cwKey = document.getElementById('colorwaySelect')?.value;
   const bom = excelColorways[cwKey];
+  if (bom && parsedPieces.length > 0 && parsedPieces.every(p => typeof p.bomOrder !== 'number')) {
+    applyColorwayMapping();
+  }
   if (!bom) return;
   currentColorwayName = bom.cleanColor;
   if (parsedPieces.length === 0 && (!window._cleanDxfPieces || window._cleanDxfPieces.length === 0)) return;
@@ -708,7 +713,7 @@ function applyColorwayMapping() {
     let bestCodeItem = null, bestCodeDiff = Infinity;
     availableBom.forEach(b => {
       if (b.used || !b.codes || b.codes.length === 0) return;
-      const hit = b.codes.some(c => c.length >= 2 && new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up));
+      const hit = b.codes.some(c => c.length >= 2 && (new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up) || up.includes(c)));
       if (!hit) return;
       const [s1, s2] = String(b.size || '').split('*').map(Number);
       const diff = (s1 && s2) ? Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1)) : 0;
@@ -796,7 +801,7 @@ function applyColorwayMapping() {
       if (p.fabric === b.fabric) return false;
       const up = String(p.rawText || '').toUpperCase();
       if (b.codes && b.codes.length > 0) {
-        const sameCode = b.codes.some(c => c.length >= 2 && new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up));
+        const sameCode = b.codes.some(c => c.length >= 2 && (new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up) || up.includes(c)));
         if (!sameCode) return false;
       }
       const d1 = p.width / 10, d2 = p.height / 10;
