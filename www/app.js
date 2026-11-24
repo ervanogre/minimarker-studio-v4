@@ -582,11 +582,48 @@ function applyColorwayMapping() {
         if (score < bestScore) { bestScore = score; bestItem = b; }
       }
     });
+    // Jika ukuran DXF merupakan gabungan 2 komponen BOM (misal FRPT 8.2*28.2 + FRPB 17.7*28 digabung jadi 1 pola FRP di DXF)
+    if (!bestItem) {
+      const pClean = up.replace(/[^A-Z0-9]/g, '');
+      const matchingSubBom = availableBom.filter(b => {
+        if (b.used) return false;
+        const bPrefix = String(b.raw || b.name || '').split(/[-_\s]/).at(0).toUpperCase();
+        const codeHit = b.codes && b.codes.some(c => c.length >= 2 && up.includes(c));
+        const prefixHit = bPrefix.length >= 3 && (pClean.includes(bPrefix) || bPrefix.startsWith(pClean.slice(0, 3)));
+        return codeHit || prefixHit;
+      });
+      if (matchingSubBom.length > 0) {
+        matchingSubBom.sort((a, b) => a.idx - b.idx);
+        bestItem = matchingSubBom.at(0);
+        if (matchingSubBom.length >= 2) {
+          matchingSubBom.forEach(sb => { sb.used = true; });
+          const combinedNames = [...new Set(matchingSubBom.map(sb => sb.name).filter(Boolean))].join(' / ');
+          if (combinedNames) bestItem = { ...bestItem, name: combinedNames };
+        }
+      } else {
+        // Fallback: ambil baris BOM belum terpakai paling awal di fabric yang sama (misal No. 1 & 2 BOM yang digabung di DXF)
+        const unusedSameFab = availableBom.filter(b => !b.used && b.fabric === p.fabric).sort((a, b) => a.idx - b.idx);
+        const unusedPool = unusedSameFab.length > 0 ? unusedSameFab : availableBom.filter(b => !b.used).sort((a, b) => a.idx - b.idx);
+        if (unusedPool.length > 0) {
+          bestItem = unusedPool.at(0);
+          // Jika ada 2 baris BOM berurutan yang belum terpakai di awal (misal idx 0 & idx 1), gabungkan keduanya
+          if (unusedPool.length >= 2 && unusedPool.at(1).idx === bestItem.idx + 1) {
+            unusedPool.at(1).used = true;
+            const combName = [bestItem.name, unusedPool.at(1).name].filter(Boolean).join(' / ');
+            bestItem = { ...bestItem, name: combName };
+          }
+        }
+      }
+    }
+
     if (bestItem) {
       bestItem.used = true;
+      p.bomOrder = bestItem.idx;
       p.fabric = bestItem.fabric;
       p.name = bestItem.name || p.name;
-      p.sizeText = bestItem.size;
+      if (!String(bestItem.name || '').includes(' / ')) {
+        p.sizeText = bestItem.size;
+      }
       if (bestItem.qty > 1) {
         p.qtyLabel = classifyQtyBySymmetry(p, bestItem.qty);
       } else {
@@ -615,6 +652,7 @@ function applyColorwayMapping() {
       existingFabKeys.add(uniqueKey);
       const clone = JSON.parse(JSON.stringify(matchDxf));
       clone.id = parsedPieces.length + extraCrossFabPieces.length + 1;
+      clone.bomOrder = b.idx;
       clone.fabric = b.fabric;
       clone.name = b.name || clone.name;
       clone.sizeText = b.size;
@@ -826,12 +864,26 @@ function generateMiniMarker() {
   const cwKey = document.getElementById('colorwaySelect')?.value;
   const bom = excelColorways[cwKey];
 
-  const fabricOrder = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
-  const activeFabrics = fabricOrder.filter(f => parsedPieces.some(p => p.fabric === f));
+  const defaultFabOrder = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
+  // Urutkan kategori fabric sesuai urutan kemunculan pertama di BOM (jika BOM tersedia)
+  const bomFabSeq = [];
+  if (bom && Array.isArray(bom.pieces)) {
+    bom.pieces.forEach(bp => {
+      if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric);
+    });
+  }
+  const activeFabrics = [...new Set([...bomFabSeq, ...defaultFabOrder])].filter(f => parsedPieces.some(p => p.fabric === f));
   const fabricNumberMap = {};
   activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
 
-  const sortedPieces = [...parsedPieces].sort((a, b) => (fabricNumberMap[a.fabric] || 9) - (fabricNumberMap[b.fabric] || 9));
+  const sortedPieces = [...parsedPieces].sort((a, b) => {
+    const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
+    if (fDiff !== 0) return fDiff;
+    const oA = typeof a.bomOrder === 'number' ? a.bomOrder : 9999;
+    const oB = typeof b.bomOrder === 'number' ? b.bomOrder : 9999;
+    if (oA !== oB) return oA - oB;
+    return (a.id || 0) - (b.id || 0);
+  });
   const subCounters = {};
   sortedPieces.forEach(p => {
     const fNum = fabricNumberMap[p.fabric] || 1;
@@ -953,9 +1005,16 @@ function generateMiniMarker() {
     ctx.fillStyle = '#000000';
     ctx.font = 'bold ' + titleSize + 'px ' + fontFam;
     ctx.textAlign = 'center';
-    const titleLines = wrapCanvasLines(ctx, styleVal + ' (' + currentColorwayName + ')', canvas.width - 120);
-    const titleLineH = Math.round(titleSize * 1.15);
-    titleLines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, 16 + titleLineH * (i + 1)));
+    const fullTitleText = (styleVal + ' (' + currentColorwayName + ')').replace(/\s+/g, ' ').trim();
+    let effTitleSize = titleSize;
+    ctx.font = 'bold ' + effTitleSize + 'px ' + fontFam;
+    while (effTitleSize > 16 && ctx.measureText(fullTitleText).width > (canvas.width - 80)) {
+      effTitleSize -= 1;
+      ctx.font = 'bold ' + effTitleSize + 'px ' + fontFam;
+    }
+    const titleLines = [fullTitleText];
+    const titleLineH = Math.round(effTitleSize * 1.15);
+    ctx.fillText(fullTitleText, canvas.width / 2, 16 + titleLineH);
 
     const bomSpecs = (bom && bom.fabricSpecs) || {};
     const defaultSpecs = { MA: 'POLY 600D SOLID 100% RECYCLED 60" PU (' + currentColorwayName + ')', T1: 'POLY 600D SOLID 100% RECYCLED 60" PU (BLACK 008)', T2: 'PU LEATHER 52" (' + currentColorwayName + ')', T3: 'NON-WOVEN FABRIC 60" 100G (WHITE)', L2: 'POLY 200D SOLUTION DYE EMBOSSED 100% RECYCLED 58" PU (INTERNAL)', N1: 'POLY 840D MESH 60" (' + currentColorwayName + ')' };
