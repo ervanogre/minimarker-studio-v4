@@ -951,6 +951,21 @@ function generateMiniMarker() {
   const fabricNumberMap = {};
   activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
 
+  if ((typeof isAutoSyncMode !== 'undefined' && isAutoSyncMode) && window._menu1MasterOrderMap && Object.keys(window._menu1MasterOrderMap).length > 0) {
+    parsedPieces.forEach(p => {
+      const altKey = String(p.rawText || '').trim().toUpperCase() + '_' + String(p.fabric || '');
+      const m = window._menu1MasterOrderMap[p.id] || window._menu1MasterOrderMap[altKey];
+      if (m) {
+        p.bomOrder = m.order;
+        p.fabric = m.fabric;
+        p.name = m.name;
+        p.sizeText = m.sizeText;
+        p.qtyLabel = m.qtyLabel;
+        p.processLabel = m.processLabel;
+        p.autoRotate90 = m.autoRotate90;
+      }
+    });
+  }
   const sortedPieces = [...parsedPieces].sort((a, b) => {
     const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
     if (fDiff !== 0) return fDiff;
@@ -971,85 +986,29 @@ function generateMiniMarker() {
   const sampleFooterH = 42 + (activeFabrics.length * Math.max(labelSize + 11, 24));
   const sampleBoxH = 1240 - 76 - sampleFooterH - 22;
 
-  // Fungsi pembantu menghitung skor skala maksimal untuk kombinasi (c, r, pages)
-  function evaluateGrid(c, r, pg) {
-    if (c * r * pg < totalAll) return -1;
-    const cW = (sampleBoxW - 24) / c;
-    const cH = (sampleBoxH - 18) / r;
-    const circR = Math.min(14, cH * 0.075);
-    const mW = Math.max(cW - ((circR * 2) + 8) - 38, 20);
-    const mH = Math.max(cH - (labelSize + 8) - ((labelSize * 2) + 14), 20);
-    if (mW < 28 || mH < 24) return -1;
-
-    const scales = sortedPieces.map(p => {
-      const sideBySide = false;
-      const nW = sideBySide ? (p.width * 2 + 20) : p.width;
-      const sNorm = Math.min(mW / Math.max(nW, 1), mH / Math.max(p.height, 1));
-      const rW = sideBySide ? (p.height * 2 + 20) : p.height;
-      const sRot = Math.min(mW / Math.max(rW, 1), mH / Math.max(p.width, 1));
-      return Math.max(sNorm, sRot);
-    }).sort((a, b) => a - b);
-
-    // Gunakan persentil ke-15 terendah agar mayoritas komponen tampil maksimal
-    return scales[Math.floor(scales.length * 0.15)] || scales[0] || 0.1;
+  const dynLayout = computeDynamicGridLayout(sortedPieces, customCols, customRows, sampleBoxW, sampleBoxH, labelSize);
+  const cols = dynLayout.cols;
+  const rowsPerPage = dynLayout.rowsPerPage;
+  const pages = dynLayout.pages;
+  const globalUniformScale = dynLayout.globalUniformScale;
+  window._lastRenderMeta = { globalUniformScale, cols, rowsPerPage };
+  if (typeof isAutoSyncMode === 'undefined' || !isAutoSyncMode) {
+    window._menu1MasterOrderMap = {};
+    sortedPieces.forEach((sp, sIdx) => {
+      const entry = {
+        order: sIdx,
+        fabric: sp.fabric,
+        name: sp.name,
+        sizeText: sp.sizeText,
+        qtyLabel: sp.qtyLabel,
+        processLabel: sp.processLabel,
+        autoRotate90: !!sp.autoRotate90
+      };
+      window._menu1MasterOrderMap[sp.id] = entry;
+      const altKey = String(sp.rawText || '').trim().toUpperCase() + '_' + String(sp.fabric || '');
+      if (!window._menu1MasterOrderMap[altKey]) window._menu1MasterOrderMap[altKey] = entry;
+    });
   }
-
-  let cols = customCols !== 'auto' ? parseInt(customCols) : 6;
-  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : 4;
-  let maxPages = 1;
-
-  if (customCols === 'auto' && customRows === 'auto') {
-    let bestScore = -1;
-    const maxAllowedPages = totalAll <= 30 ? 1 : (totalAll <= 65 ? 2 : 3);
-    for (let pg = 1; pg <= maxAllowedPages; pg++) {
-      const targetPerPg = Math.ceil(totalAll / pg);
-      for (let c = 4; c <= 9; c++) {
-        const r = Math.ceil(targetPerPg / c);
-        if (r < 2 || r > 7) continue;
-        const sc = evaluateGrid(c, r, pg);
-        if (sc > bestScore) {
-          bestScore = sc;
-          cols = c;
-          rowsPerPage = r;
-          maxPages = pg;
-        }
-      }
-    }
-  } else {
-    if (customCols === 'auto') cols = Math.min(9, Math.max(4, Math.ceil(Math.sqrt(totalAll * 1.4))));
-    if (customRows === 'auto') rowsPerPage = Math.min(6, Math.max(2, Math.ceil(totalAll / cols)));
-    maxPages = Math.min(3, Math.max(1, Math.ceil(totalAll / (cols * rowsPerPage))));
-  }
-
-  const perPage = cols * rowsPerPage;
-  const pages = [];
-  for (let p = 0; p < maxPages; p++) {
-    const slice = sortedPieces.slice(p * perPage, (p + 1) * perPage);
-    if (slice.length > 0) pages.push(slice);
-  }
-
-  const stdCellW = (sampleBoxW - 24) / cols;
-  const stdCellH = (sampleBoxH - 18) / Math.max(rowsPerPage, 1);
-  const stdCircleR = Math.min(14, stdCellH * 0.075);
-  const stdMaxW = Math.max(stdCellW - ((stdCircleR * 2) + 8) - 38, 24);
-  const stdMaxH = Math.max(stdCellH - (labelSize + 8) - ((labelSize * 2) + 14), 24);
-
-  const pieceScales = [];
-  sortedPieces.forEach(p => {
-    const sideBySide = false;
-    const normW = sideBySide ? (p.width * 2 + 20) : p.width;
-    const scaleNorm = Math.min(stdMaxW / Math.max(normW, 1), stdMaxH / Math.max(p.height, 1));
-    const rotW = sideBySide ? (p.height * 2 + 20) : p.height;
-    const scaleRot = Math.min(stdMaxW / Math.max(rotW, 1), stdMaxH / Math.max(p.width, 1));
-
-    p.autoRotate90 = scaleRot > scaleNorm * 1.03;
-    p.maxAllowedScale = p.autoRotate90 ? scaleRot : scaleNorm;
-    pieceScales.push(p.maxAllowedScale);
-  });
-
-  pieceScales.sort((a, b) => a - b);
-  let globalUniformScale = pieceScales[Math.floor(pieceScales.length * 0.15)] || pieceScales[0] || 0.25;
-  if (!isFinite(globalUniformScale) || globalUniformScale <= 0) globalUniformScale = 0.25;
 
   const container = document.getElementById('markerContainer');
   container.innerHTML = '';
@@ -1121,30 +1080,34 @@ function generateMiniMarker() {
     ctx.lineWidth = 2.5;
     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-    window._lastRenderMeta = { globalUniformScale, cols, rowsPerPage };
-  const actualRows = Math.max(rowsPerPage, Math.ceil(pagePieces.length / cols));
-    const cellW = (boxW - 24) / cols;
-    const cellH = (boxH - 18) / actualRows;
+    const actualRows = rowsPerPage;
+    const baseCellW = (boxW - 24) / cols;
+    const baseCellH = (boxH - 18) / actualRows;
 
-    pagePieces.forEach((piece, idx) => {
-      const col = Math.floor(idx / actualRows), row = idx % actualRows;
-      const cx = boxX + 12 + col * cellW, cy = boxY + 10 + row * cellH;
+    pagePieces.forEach((slot) => {
+      const piece = slot.piece || slot;
+      const col = slot.col || 0, row = slot.row || 0;
+      const cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
+      const cellW = baseCellW * cSpan;
+      const cellH = baseCellH * rSpan;
+      const cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
       canvas._hitBoxes.push({ x: cx, y: cy, w: cellW, h: cellH, piece });
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
 
-      const circleR = Math.min(15, cellH * 0.082);
-      const topSpace = piece.processLabel ? (labelSize + 10) : 8;
-      const bottomSpace = Math.round(labelSize * 3.1) + 18;
+      const circleR = Math.min(14, baseCellH * 0.075);
+      const topSpace = piece.processLabel ? (Math.max(procSize, 10) + 10) : 8;
+      const bottomSpace = Math.round(labelSize * 3.0) + 16;
       const leftOffset = (circleR * 2) + 8;
-      const maxDrawW = Math.max(cellW - leftOffset - 44, 24);
+      const rightSpace = piece.qtyLabel ? 34 : 10;
+      const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24);
       const maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
 
       const effW = piece.autoRotate90 ? piece.height : piece.width;
       const effH = piece.autoRotate90 ? piece.width : piece.height;
       const drawSideBySide = false;
-      const totalDrawW = drawSideBySide ? (effW * 2 + 25) : effW;
-      const pairScale = Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
-      const finalW = totalDrawW * pairScale, finalH = effH * pairScale;
+      const isGiant = (cSpan > 1 || rSpan > 1);
+      const pairScale = isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const finalW = effW * pairScale, finalH = eh_val = effH * pairScale;
       const finalX = cx + leftOffset + (maxDrawW - finalW) / 2;
       const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
       const centerDrawX = finalX + finalW / 2;
@@ -1157,27 +1120,37 @@ function generateMiniMarker() {
       ctx.lineWidth = 1.8;
       ctx.stroke();
       ctx.fillStyle = '#000000';
-      const numScale = String(fabNum).length >= 4 ? 0.78 : 0.92;
+      const numScale = String(fabNum).length >= 4 ? 0.76 : 0.90;
       ctx.font = 'bold ' + Math.round(circleR * numScale) + 'px ' + fontFam;
       ctx.textAlign = 'center';
       ctx.fillText(String(fabNum), numCx, numCy + Math.round(circleR * 0.35));
 
       if (piece.processLabel) {
         const parts = piece.processLabel.toUpperCase().split('-').map(s => s.trim()).filter(Boolean);
-        ctx.font = '900 ' + Math.max(procSize, 9) + 'px ' + fontFam;
-        ctx.textAlign = 'left';
         const sep = ' - ';
+        const procLeftLimit = numCx + circleR + 6;
+        const procRightLimit = cx + cellW - 4;
+        const maxProcW = Math.max(procRightLimit - procLeftLimit, 36);
+        let effProcSize = Math.max(procSize, 9);
+        ctx.font = '900 ' + effProcSize + 'px ' + fontFam;
+        let totalTextW = parts.reduce((a, pt) => a + ctx.measureText(pt).width, 0) + ctx.measureText(sep).width * Math.max(parts.length - 1, 0);
+        while (effProcSize > 7 && totalTextW > maxProcW) {
+          effProcSize -= 0.5;
+          ctx.font = '900 ' + effProcSize + 'px ' + fontFam;
+          totalTextW = parts.reduce((a, pt) => a + ctx.measureText(pt).width, 0) + ctx.measureText(sep).width * Math.max(parts.length - 1, 0);
+        }
+        ctx.textAlign = 'left';
         const sepW = ctx.measureText(sep).width;
-        const partWidths = parts.map(pt => ctx.measureText(pt).width);
-        const totalTextW = partWidths.reduce((a, b) => a + b, 0) + sepW * Math.max(parts.length - 1, 0);
-        let curTextX = Math.max(numCx + circleR + 6, centerDrawX - (totalTextW / 2));
+        let curTextX = Math.min(procRightLimit - totalTextW, Math.max(procLeftLimit, centerDrawX - (totalTextW / 2)));
+        curTextX = Math.max(procLeftLimit, curTextX);
+        const procY = Math.max(cy + effProcSize + 3, finalY - 5);
         parts.forEach((pt, pIdx) => {
           ctx.fillStyle = getProcessColor(pt);
-          ctx.fillText(pt, curTextX, finalY - 6);
-          curTextX += partWidths.at(pIdx);
+          ctx.fillText(pt, curTextX, procY);
+          curTextX += ctx.measureText(pt).width;
           if (pIdx < parts.length - 1) {
             ctx.fillStyle = '#64748b';
-            ctx.fillText(sep, curTextX, finalY - 6);
+            ctx.fillText(sep, curTextX, procY);
             curTextX += sepW;
           }
         });
@@ -1211,7 +1184,7 @@ function generateMiniMarker() {
         ctx.fillStyle = '#000000';
         ctx.font = 'bold ' + Math.max(labelSize - 2, 10) + 'px ' + fontFam;
         ctx.textAlign = 'left';
-        const labelX = Math.min(finalX + finalW + 5, cx + cellW - 36);
+        const labelX = finalX + finalW + 5;
         const labelY = Math.max(cy + 16, finalY + 11);
         if (piece.qtyLabel === 'Ax2 Bx2') {
           ctx.fillText('Ax2', labelX, labelY);
@@ -1683,22 +1656,21 @@ function runAutoSyncOnly() {
     alert("Unggah file pola (.DXF) terlebih dahulu di Menu 1 sebelum menjalankan Auto Sync!");
     return;
   }
-  const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+  const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces && excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
   if (cwKeys.length > 0) {
     const sel = document.getElementById('colorwaySelect');
-    if (sel && !sel.value) {
-      sel.value = cwKeys[0];
+    if (sel) {
+      if (!sel.value || !cwKeys.includes(sel.value)) sel.value = cwKeys.at(0);
       applyColorwayMapping();
     }
   }
   Object.values(excelColorways || {}).forEach(cw => {
     if (cw && Array.isArray(cw.pieces)) syncMenu1LayoutToPieces(cw.pieces);
   });
-  // Gunakan mesin penyusun generateMiniMarker() yang sama persis dengan Menu 1
   generateMiniMarker();
   const resultArea = document.getElementById('resultArea');
   if (resultArea) resultArea.classList.remove('hidden');
-  appendSyncLog("✅ Auto Sync selesai! Penyusunan pola disamakan dengan Menu 1 (" + (cwKeys.length || 1) + " Colorway).");
+  appendSyncLog("✅ Auto Sync selesai! Urutan susunan 100% sesuai BOM (" + (cwKeys.length || 1) + " Colorway).");
 }
 
 function backToSplash() {
@@ -1885,7 +1857,8 @@ function parseMasterOrderCsv(rows) {
     alert("Style No '" + targetStyleClean + "' tidak ditemukan di file Planning Spread ini.");
     return false;
   }
-  const activeRows = matched.length > 0 ? matched : dataRows;
+  if (matched.length === 0) { alert('Style No tidak cocok dengan isi file Planning Spread JanSport.'); return false; }
+  const activeRows = matched;
   if (activeRows.length === 0) return false;
 
   const firstOrder = String(activeRows.at(0).at(idxOrder) || '').trim().toUpperCase();
@@ -2380,17 +2353,26 @@ function parsePlanningReiRows(rows) {
   const norm = (s) => String(s || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase();
   const inpStyle = norm(document.getElementById('styleNoInput')?.value || '');
   const bomList = Object.values(bomTemplates || excelColorways || {}).filter(c => !c.isMasterOrder);
-  const targetRaw = norm(inpStyle || currentStyleName || bomList.at(0)?.sheetName || '');
-  const reiBaseNum = (targetRaw.match(/\b(\d{5})\b/) || [])[1] || '';
-  const targetSizeRange = (targetRaw.match(/\b(XXL-4XL|XS-XL|L-XL|S-M|XXL-3XL|1X-4X|1X-3X|M-XL|XS-S)\b/) || [])[1] || '';
+  const allTextHint = (inpStyle + ' ' + String(currentStyleName || '') + ' ' + bomList.map(b => b.sheetName || '').join(' ')).toUpperCase();
+  const mNum = allTextHint.match(/(?:^|[^0-9])(\d{5})(?:[^0-9]|$)/);
+  const reiBaseNum = mNum ? mNum.at(1) : '';
+  const mRng = allTextHint.match(/(XXL-4XL|XS-XL|L-XL|S-M|XXL-3XL|1X-4X|1X-3X|M-XL|XS-S)/);
+  const targetSizeRange = mRng ? mRng.at(1) : '';
 
   const dataRows = rows.slice(headerIdx + 1).filter(r => r.length > 5 && String(r.at(idxStyle) || '').trim());
-  const matched = reiBaseNum ? dataRows.filter(r => {
+  if (!reiBaseNum) {
+    alert("Kode Style 5-digit REI (contoh: 24654) belum terisi di kotak STYLE NO atau BOM.");
+    return false;
+  }
+  let matched = dataRows.filter(r => {
     const rs = norm(r.at(idxStyle));
     const rsn = idxStyleName !== -1 ? norm(r.at(idxStyleName)) : '';
     if (!rs.includes(reiBaseNum)) return false;
     return targetSizeRange ? (rs + ' ' + rsn).replace(/\s+/g, '').includes(targetSizeRange.replace(/\s+/g, '')) : true;
-  }) : dataRows;
+  });
+  if (matched.length === 0) {
+    matched = dataRows.filter(r => norm(r.at(idxStyle)).includes(reiBaseNum));
+  }
   if (matched.length === 0) return false;
 
   const firstOrder = String(matched.at(0).at(idxOrder) || '').trim().toUpperCase();
@@ -2747,6 +2729,21 @@ function buildEditableVectorPdf() {
   if (bom && Array.isArray(bom.pieces)) bom.pieces.forEach(bp => { if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric); });
   const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'L2', 'N1'])].filter(f => parsedPieces.some(p => p.fabric === f));
   const fabricNumberMap = {}; activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
+  if ((typeof isAutoSyncMode !== 'undefined' && isAutoSyncMode) && window._menu1MasterOrderMap && Object.keys(window._menu1MasterOrderMap).length > 0) {
+    parsedPieces.forEach(p => {
+      const altKey = String(p.rawText || '').trim().toUpperCase() + '_' + String(p.fabric || '');
+      const m = window._menu1MasterOrderMap[p.id] || window._menu1MasterOrderMap[altKey];
+      if (m) {
+        p.bomOrder = m.order;
+        p.fabric = m.fabric;
+        p.name = m.name;
+        p.sizeText = m.sizeText;
+        p.qtyLabel = m.qtyLabel;
+        p.processLabel = m.processLabel;
+        p.autoRotate90 = m.autoRotate90;
+      }
+    });
+  }
   const sortedPieces = [...parsedPieces].sort((a, b) => {
     const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
     if (fDiff !== 0) return fDiff;
@@ -2755,30 +2752,15 @@ function buildEditableVectorPdf() {
   });
   const subCounters = {};
   sortedPieces.forEach(p => { const fn = fabricNumberMap[p.fabric] || 1; subCounters[fn] = (subCounters[fn] || 0) + 1; p.itemNumberLabel = fn + '.' + subCounters[fn]; });
-  const totalAll = sortedPieces.length, sampleBoxW = CW - 72;
-  const sampleFooterH = 42 + (activeFabrics.length * Math.max(labelSize + 11, 24)), sampleBoxH = CH - 76 - sampleFooterH - 22;
-  function evaluateGridPdf(c, r, pg) {
-    if (c * r * pg < totalAll) return -1;
-    const cW = (sampleBoxW - 24) / c, cH = (sampleBoxH - 18) / r, circR = Math.min(14, cH * 0.075);
-    const mW = Math.max(cW - ((circR * 2) + 8) - 38, 20), mH = Math.max(cH - (labelSize + 8) - ((labelSize * 2) + 14), 20);
-    if (mW < 28 || mH < 24) return -1;
-    const scales = sortedPieces.map(p => Math.max(Math.min(mW / Math.max(p.width, 1), mH / Math.max(p.height, 1)), Math.min(mW / Math.max(p.height, 1), mH / Math.max(p.width, 1)))).sort((a, b) => a - b);
-    return scales[Math.floor(scales.length * 0.15)] || scales.at(0) || 0.1;
-  }
-  let cols = customCols !== 'auto' ? parseInt(customCols) : 6, rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : 4, maxPages = 1;
-  if (customCols === 'auto' && customRows === 'auto') {
-    let bestScore = -1, maxAllowedPages = totalAll <= 30 ? 1 : (totalAll <= 65 ? 2 : 3);
-    for (let pg = 1; pg <= maxAllowedPages; pg++) {
-      const targetPerPg = Math.ceil(totalAll / pg);
-      for (let c = 4; c <= 9; c++) { const r = Math.ceil(targetPerPg / c); if (r >= 2 && r <= 7) { const sc = evaluateGridPdf(c, r, pg); if (sc > bestScore) { bestScore = sc; cols = c; rowsPerPage = r; maxPages = pg; } } }
-    }
-  } else {
-    if (customCols === 'auto') cols = Math.min(9, Math.max(4, Math.ceil(Math.sqrt(totalAll * 1.4))));
-    if (customRows === 'auto') rowsPerPage = Math.min(6, Math.max(2, Math.ceil(totalAll / cols)));
-  }
-  const perPage = Math.max(1, cols * rowsPerPage), pages = [];
-  for (let i = 0; i < sortedPieces.length; i += perPage) pages.push(sortedPieces.slice(i, i + perPage));
-  if (pages.length === 0) pages.push([]);
+  const sampleBoxW = CW - 72;
+  const sampleFooterH = 42 + (activeFabrics.length * Math.max(labelSize + 11, 24));
+  const sampleBoxH = CH - 76 - sampleFooterH - 22;
+  const dynLayout = computeDynamicGridLayout(sortedPieces, customCols, customRows, sampleBoxW, sampleBoxH, labelSize);
+  const cols = dynLayout.cols;
+  const rowsPerPage = dynLayout.rowsPerPage;
+  const pages = dynLayout.pages;
+  const globalUniformScale = dynLayout.globalUniformScale;
+
   pages.forEach((pagePieces, pageIdx) => {
     if (pageIdx > 0) doc.addPage();
     doc.setTextColor(0, 0, 0); doc.setFont(pdfFont, 'bold');
@@ -2803,32 +2785,51 @@ function buildEditableVectorPdf() {
     if (pages.length > 1) { doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(labelSize + 3)); doc.text('HAL ' + (pageIdx + 1) + '/' + pages.length, (boxX + boxW) * sx, (boxY - 8) * sy, { align: 'right' }); }
     doc.setDrawColor(0, 0, 0); doc.setLineWidth(2.5 * sx); doc.rect(boxX * sx, boxY * sy, boxW * sx, boxH * sy);
 
-    const actualRows = Math.max(rowsPerPage, Math.ceil(pagePieces.length / cols));
-    const cellW = (boxW - 24) / cols, cellH = (boxH - 18) / actualRows;
-    const globalUniformScale = (window._lastRenderMeta && window._lastRenderMeta.globalUniformScale) || 0.1;
+    const actualRows = rowsPerPage;
+    const baseCellW = (boxW - 24) / cols, baseCellH = (boxH - 18) / actualRows;
 
-    pagePieces.forEach((piece, idx) => {
-      const col = Math.floor(idx / actualRows), row = idx % actualRows, cx = boxX + 12 + col * cellW, cy = boxY + 10 + row * cellH;
-      const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1), circleR = Math.min(15, cellH * 0.082);
-      const topSpace = piece.processLabel ? (labelSize + 10) : 8, bottomSpace = Math.round(labelSize * 3.1) + 18, leftOffset = (circleR * 2) + 8;
-      const maxDrawW = Math.max(cellW - leftOffset - 44, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
+    pagePieces.forEach((slot) => {
+      const piece = slot.piece || slot;
+      const col = slot.col || 0, row = slot.row || 0;
+      const cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
+      const cellW = baseCellW * cSpan, cellH = baseCellH * rSpan;
+      const cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
+      const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
+      const circleR = Math.min(14, baseCellH * 0.075);
+      const topSpace = piece.processLabel ? (Math.max(procSize, 10) + 10) : 8;
+      const bottomSpace = Math.round(labelSize * 3.0) + 16;
+      const leftOffset = (circleR * 2) + 8;
+      const rightSpace = piece.qtyLabel ? 6.5 : 2;
+      const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
       const ew = piece.autoRotate90 ? piece.height : piece.width, eh = piece.autoRotate90 ? piece.width : piece.height;
-      const pairScale = Math.min(globalUniformScale, maxDrawW / Math.max(ew, 1), maxDrawH / Math.max(eh, 1));
-      const finalW = ew * pairScale, finalH = eh * pairScale, finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2, centerDrawX = finalX + finalW / 2;
+      const isGiant = (cSpan > 1 || rSpan > 1);
+      const pairScale = isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const finalW = ew * pairScale, finalH = eh * pairScale;
+      const finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
+      const centerDrawX = finalX + finalW / 2;
 
       const numCx = Math.max(cx + circleR + 3, finalX - circleR - 5), numCy = Math.max(cy + circleR + 6, finalY + circleR);
       doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.8 * sx); doc.circle(numCx * sx, numCy * sy, circleR * sx, 'S');
-      doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(Math.round(circleR * (String(fabNum).length >= 4 ? 0.78 : 0.92)))); doc.setTextColor(0, 0, 0);
+      doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(Math.round(circleR * (String(fabNum).length >= 4 ? 0.76 : 0.90)))); doc.setTextColor(0, 0, 0);
       doc.text(String(fabNum), numCx * sx, (numCy + Math.round(circleR * 0.35)) * sy, { align: 'center' });
 
       if (piece.processLabel) {
         const parts = piece.processLabel.toUpperCase().split('-').map(s => s.trim()).filter(Boolean);
-        doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(Math.max(procSize, 9)));
-        const sep = ' - ', sepW = doc.getTextWidth(sep), totalTextW = parts.reduce((acc, pt) => acc + doc.getTextWidth(pt), 0) + sepW * Math.max(parts.length - 1, 0);
-        let curTextX = Math.max((numCx + circleR + 6) * sx, (centerDrawX * sx) - (totalTextW / 2));
+        const sep = ' - ', procLeftLimit = numCx + circleR + 6, procRightLimit = cx + cellW - 4;
+        const maxProcW = Math.max(procRightLimit - procLeftLimit, 36) * sx;
+        let effProcSize = Math.max(procSize, 9);
+        doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(effProcSize));
+        let totalTextW = parts.reduce((acc, pt) => acc + doc.getTextWidth(pt), 0) + doc.getTextWidth(sep) * Math.max(parts.length - 1, 0);
+        while (effProcSize > 7 && totalTextW > maxProcW) {
+          effProcSize -= 0.5; doc.setFontSize(pxToPt(effProcSize));
+          totalTextW = parts.reduce((acc, pt) => acc + doc.getTextWidth(pt), 0) + doc.getTextWidth(sep) * Math.max(parts.length - 1, 0);
+        }
+        const sepW = doc.getTextWidth(sep);
+        let curTextX = Math.max(procLeftLimit * sx, Math.min((procRightLimit * sx) - totalTextW, (centerDrawX * sx) - (totalTextW / 2)));
+        const procY = Math.max(cy + effProcSize + 3, finalY - 5);
         parts.forEach((pt, pIdx) => {
-          const rgb = hexToRgbTuple(getProcessColor(pt)); doc.setTextColor(rgb.at(0), rgb.at(1), rgb.at(2)); doc.text(pt, curTextX, (finalY - 6) * sy); curTextX += doc.getTextWidth(pt);
-          if (pIdx < parts.length - 1) { doc.setTextColor(100, 116, 139); doc.text(sep, curTextX, (finalY - 6) * sy); curTextX += sepW; }
+          const rgb = hexToRgbTuple(getProcessColor(pt)); doc.setTextColor(rgb.at(0), rgb.at(1), rgb.at(2)); doc.text(pt, curTextX, procY * sy); curTextX += doc.getTextWidth(pt);
+          if (pIdx < parts.length - 1) { doc.setTextColor(100, 116, 139); doc.text(sep, curTextX, procY * sy); curTextX += sepW; }
         });
       }
 
@@ -2842,7 +2843,7 @@ function buildEditableVectorPdf() {
 
       if (piece.qtyLabel) {
         doc.setTextColor(0, 0, 0); doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(Math.max(labelSize - 2, 10)));
-        const labelX = Math.min(finalX + finalW + 5, cx + cellW - 36), labelY = Math.max(cy + 16, finalY + 11);
+        const labelX = finalX + finalW + 5, labelY = Math.max(cy + 16, finalY + 11);
         if (piece.qtyLabel === 'Ax2 Bx2') { doc.text('Ax2', labelX * sx, labelY * sy); doc.text('Bx2', labelX * sx, (labelY + Math.max(labelSize, 12)) * sy); }
         else doc.text(String(piece.qtyLabel), labelX * sx, labelY * sy);
       }
@@ -2916,3 +2917,211 @@ window.saveAllColorwaysBatch = async function(format) {
     alert("❌ Gagal membuat ZIP: " + (err && err.message ? err.message : err));
   }
 };
+
+// === DYNAMIC MULTI-CELL GRID LAYOUT ENGINE (PANEL RAKSASA SPAN 2x2 & ANTI-TUMPANG TINDIH) ===
+function computeDynamicGridLayout(piecesList, customCols, customRows, sampleBoxW, sampleBoxH, labelSize) {
+  const totalCount = piecesList.length;
+  if (totalCount === 0) return { cols: 6, rowsPerPage: 4, pages: [[]], globalUniformScale: 0.25 };
+
+  const areas = piecesList.map(p => p.width * p.height).sort((a, b) => a - b);
+  const maxSides = piecesList.map(p => Math.max(p.width, p.height)).sort((a, b) => a - b);
+  const p65Area = areas[Math.floor(areas.length * 0.65)] || 80000;
+  const p70Side = maxSides[Math.floor(maxSides.length * 0.70)] || 350;
+
+  // HANYA panel Raincover (atau panel raksasa >= 70*55 cm / area >= 4000 cm2) yang mendapat 2x2 sel
+  piecesList.forEach(p => {
+    const cmW = p.width / 10, cmH = p.height / 10;
+    const areaCm = cmW * cmH;
+    const isRaincover = /RAINCOVER|\bRC-/i.test(String(p.name || '') + ' ' + String(p.rawText || ''));
+    if (isRaincover || (areaCm >= 4000 && Math.min(cmW, cmH) >= 50)) {
+      p._colSpan = 2;
+      p._rowSpan = 2;
+    } else {
+      p._colSpan = 1;
+      p._rowSpan = 1;
+    }
+  });
+
+  const totalCellsNeeded = piecesList.reduce((acc, p) => acc + (p._colSpan * p._rowSpan), 0);
+  let cols = customCols !== 'auto' ? parseInt(customCols) : Math.min(8, Math.max(5, Math.ceil(Math.sqrt(totalCellsNeeded * 1.45))));
+  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : Math.min(6, Math.max(3, Math.ceil(totalCellsNeeded / cols)));
+  if (cols < 2) cols = 2;
+  if (rowsPerPage < 2) rowsPerPage = 2;
+
+  // Susun penempatan sel secara berurutan (kolom demi kolom, baris demi baris) tanpa tabrakan
+  const pages = [];
+  let curPage = [];
+  let occ = Array.from({ length: cols }, () => Array(rowsPerPage).fill(false));
+
+  const canPlace = (c, r, cs, rs) => {
+    if (c + cs > cols || r + rs > rowsPerPage) return false;
+    for (let dc = 0; dc < cs; dc++) {
+      for (let dr = 0; dr < rs; dr++) {
+        if (occ[c + dc][r + dr]) return false;
+      }
+    }
+    return true;
+  };
+  const markPlace = (c, r, cs, rs) => {
+    for (let dc = 0; dc < cs; dc++) {
+      for (let dr = 0; dr < rs; dr++) occ[c + dc][r + dr] = true;
+    }
+  };
+
+  piecesList.forEach(p => {
+    let cs = Math.min(p._colSpan, cols);
+    let rs = Math.min(p._rowSpan, rowsPerPage);
+    let placed = false;
+
+    for (let attempt = 0; attempt < 2 && !placed; attempt++) {
+      for (let c = 0; c < cols && !placed; c++) {
+        for (let r = 0; r < rowsPerPage && !placed; r++) {
+          if (canPlace(c, r, cs, rs)) {
+            markPlace(c, r, cs, rs);
+            curPage.push({ piece: p, col: c, row: r, colSpan: cs, rowSpan: rs });
+            placed = true;
+          }
+        }
+      }
+      if (!placed && attempt === 0) {
+        // Pindah ke halaman baru jika halaman saat ini sudah penuh
+        if (curPage.length > 0) pages.push(curPage);
+        curPage = [];
+        occ = Array.from({ length: cols }, () => Array(rowsPerPage).fill(false));
+      }
+    }
+  });
+  if (curPage.length > 0) pages.push(curPage);
+  if (pages.length === 0) pages.push([]);
+
+  // Hitung skala seragam & maxAllowedScale tiap panel sesuai ukuran span-nya
+  const baseCellW = (sampleBoxW - 24) / cols;
+  const baseCellH = (sampleBoxH - 18) / rowsPerPage;
+  const normalScales = [];
+
+  piecesList.forEach(p => {
+    const spanW = baseCellW * Math.min(p._colSpan, cols);
+    const spanH = baseCellH * Math.min(p._rowSpan, rowsPerPage);
+    const cR = Math.min(14, baseCellH * 0.075);
+    const tSp = p.processLabel ? (labelSize + 10) : 6;
+    const bSp = Math.round(labelSize * 2.9) + 16;
+    const lOff = (cR * 2) + 8;
+    const mW = Math.max(spanW - lOff - 16, 24);
+    const mH = Math.max(spanH - tSp - bSp, 24);
+    const sNorm = Math.min(mW / Math.max(p.width, 1), mH / Math.max(p.height, 1));
+    const sRot = Math.min(mW / Math.max(p.height, 1), mH / Math.max(p.width, 1));
+    p.autoRotate90 = sRot > sNorm * 1.03;
+    p.maxAllowedScale = p.autoRotate90 ? sRot : sNorm;
+    if (p._colSpan === 1 && p._rowSpan === 1) normalScales.push(p.maxAllowedScale);
+  });
+
+  normalScales.sort((a, b) => a - b);
+  let globalUniformScale = normalScales[Math.floor(normalScales.length * 0.15)] || normalScales.at(0) || 0.25;
+  if (!isFinite(globalUniformScale) || globalUniformScale <= 0) globalUniformScale = 0.25;
+
+  return { cols, rowsPerPage, pages, globalUniformScale };
+}
+
+
+// === POP-UP EDIT CEPAT SAAT GAMBAR PREVIEW DIKETUK ===
+window.openQuickPatternEditor = function(piece) {
+  if (!piece) return;
+  let modal = document.getElementById("quickPatternModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "quickPatternModal";
+    modal.style.cssText = "position:fixed; inset:0; z-index:9999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:16px;";
+    document.body.appendChild(modal);
+  }
+  const fabrics = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
+  const qtys = ['', 'A/B', 'Ax2 Bx2', 'X2', 'X3', 'X4', 'X6'];
+  const procs = ['', 'BORDIR', 'OCM', 'AUTOMATION', 'AUTOMATION-OCM', 'OCM-BORDIR', 'HEAT EMBOSSED', 'SILKSCREEN', 'PREPARING', 'SABLON'];
+  const esc = (s) => String(s || '').replace(/"/g, '&quot;');
+
+  modal.innerHTML = `
+    <div style="width:100%; max-width:390px; background:#141226; border:1.5px solid var(--neon-cyan); border-radius:14px; padding:16px; box-shadow:0 14px 36px rgba(0,245,212,0.3);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:14px; font-weight:900; color:var(--neon-cyan);">✏️ EDIT POLA (${esc(piece.itemNumberLabel || '')})</div>
+        <button type="button" onclick="document.getElementById('quickPatternModal').style.display='none'" style="background:none; border:none; color:var(--neon-pink); font-size:18px; font-weight:900; cursor:pointer;">✕</button>
+      </div>
+      <label style="font-size:11px; color:var(--muted);">NAMA KOMPONEN:</label>
+      <input type="text" id="qpName" value="${esc(piece.name)}" style="margin-bottom:8px; font-weight:700;" />
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div>
+          <label style="font-size:11px; color:var(--muted);">UKURAN (P*L):</label>
+          <input type="text" id="qpSize" value="${esc(piece.sizeText)}" style="margin-bottom:8px;" />
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--muted);">FABRIC:</label>
+          <select id="qpFab" style="margin-bottom:8px;">
+            ${fabrics.map(f => `<option value="${f}" ${piece.fabric === f ? 'selected' : ''}>${f}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div>
+          <label style="font-size:11px; color:var(--muted);">QTY / SIMETRI:</label>
+          <input type="text" id="qpQty" list="qpQtyList" value="${esc(piece.qtyLabel)}" placeholder="Kosong = 1x, A/B, X2..." style="margin-bottom:8px;" />
+          <datalist id="qpQtyList">${qtys.filter(Boolean).map(q => `<option value="${q}">`).join('')}</datalist>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--muted);">LUAR LINE:</label>
+          <input type="text" id="qpProc" list="qpProcList" value="${esc(piece.processLabel)}" placeholder="BORDIR, OCM..." style="margin-bottom:8px;" />
+          <datalist id="qpProcList">${procs.filter(Boolean).map(pr => `<option value="${pr}">`).join('')}</datalist>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button type="button" id="qpSaveBtn" class="btn" style="flex:1.4; padding:11px; font-size:13px; margin:0;">💾 TERAPKAN</button>
+        <button type="button" onclick="document.getElementById('quickPatternModal').style.display='none'" class="btn btn-secondary" style="flex:0.8; padding:11px; font-size:12px; margin:0;">BATAL</button>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+
+  document.getElementById("qpSaveBtn").onclick = function() {
+    piece.name = (document.getElementById("qpName").value || piece.name).trim().toUpperCase();
+    piece.sizeText = (document.getElementById("qpSize").value || piece.sizeText).trim();
+    piece.fabric = document.getElementById("qpFab").value || piece.fabric;
+    piece.qtyLabel = (document.getElementById("qpQty").value || "").trim();
+    piece.processLabel = (document.getElementById("qpProc").value || "").trim().toUpperCase();
+    modal.style.display = "none";
+    if (typeof renderPieceMappingList === "function") renderPieceMappingList();
+    if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+    if (typeof forceInstantCanvasRefresh === "function") forceInstantCanvasRefresh();
+    else if (typeof generateMiniMarker === "function") generateMiniMarker();
+  };
+};
+
+// === AKTIFKAN KLIK-EDIT POLA LANGSUNG DI MODE FULLSCREEN ===
+if (typeof openFullPreview === "function" && !window._wrappedFsClickEdit) {
+  window._wrappedFsClickEdit = true;
+  const _origOpenFullPreview = openFullPreview;
+  window.openFullPreview = function() {
+    _origOpenFullPreview.apply(this, arguments);
+    const fsModal = document.getElementById("fullScreenModal");
+    if (!fsModal) return;
+    const fsCanvases = fsModal.querySelectorAll("canvas");
+    fsCanvases.forEach((fc, idx) => {
+      const srcCanvas = (typeof generatedCanvases !== "undefined") ? generatedCanvases.at(idx) : null;
+      if (!srcCanvas || !srcCanvas._hitBoxes) return;
+      fc._hitBoxes = srcCanvas._hitBoxes;
+      fc.style.cursor = "pointer";
+      if (!fc._hasQuickEditBound) {
+        fc._hasQuickEditBound = true;
+        fc.addEventListener("click", function(ev) {
+          const rect = fc.getBoundingClientRect();
+          const clickX = (ev.clientX - rect.left) * (fc.width / rect.width);
+          const clickY = (ev.clientY - rect.top) * (fc.height / rect.height);
+          const hit = fc._hitBoxes.find(b => clickX >= b.x && clickX <= b.x + b.w && clickY >= b.y && clickY <= b.y + b.h);
+          if (hit && typeof window.openQuickPatternEditor === "function") {
+            ev.stopPropagation();
+            window.openQuickPatternEditor(hit.piece);
+          }
+        });
+      }
+    });
+  };
+}
