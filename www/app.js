@@ -697,6 +697,7 @@ function applyColorwayMapping() {
   // Simpan DXF asli bersih saat pertama kali dipetakan, dan selalu reset dari DXF bersih agar antar-colorway tidak menumpuk
   if (!window._cleanDxfPieces || window._cleanDxfPieces.length === 0) {
     window._cleanDxfPieces = JSON.parse(JSON.stringify(parsedPieces));
+      window._menu1MasterOrderMap = {};
   }
   parsedPieces = JSON.parse(JSON.stringify(window._cleanDxfPieces));
   const availableBom = bom.pieces.map((b, idx) => ({ ...b, idx, used: false }));
@@ -800,7 +801,7 @@ function applyColorwayMapping() {
       }
       const d1 = p.width / 10, d2 = p.height / 10;
       const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
-      return minDiff <= 1.2;
+      return minDiff <= 3.5;
     });
     const uniqueKey = `${b.fabric}|${b.name || (matchDxf && matchDxf.name)}|${b.size}`;
     if (matchDxf && !existingFabKeys.has(uniqueKey)) {
@@ -3625,6 +3626,8 @@ window.clearWorkspaceAll = function() {
   if (!confirm("Bersihkan seluruh lembar kerja (DXF, BOM, Planning, & Pratinjau)?")) return;
   parsedPieces = [];
   window._cleanDxfPieces = [];
+  window._menu1MasterOrderMap = {};
+  if (typeof isAutoSyncMode !== 'undefined') isAutoSyncMode = false;
   window._menu1MasterOrderMap = {};
   excelColorways = {};
   bomTemplates = {};
