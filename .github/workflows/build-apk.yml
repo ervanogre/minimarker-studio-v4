@@ -24,6 +24,9 @@ jobs:
           cp node_modules/xlsx/dist/xlsx.full.min.js www/libs/
           cp node_modules/jspdf/dist/jspdf.umd.min.js www/libs/
           cp node_modules/jszip/dist/jszip.min.js www/libs/
+      - name: Apply Minimarker Launcher Icon
+        run: pip install pillow && python3 apply_mipmap.py
+
       - name: Build Android Project & Add Storage Permissions
         run: |
           rm -rf android
