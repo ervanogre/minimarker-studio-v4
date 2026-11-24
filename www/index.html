@@ -152,10 +152,7 @@
         <div style="font-size:16px; font-weight:900; font-style:italic; color:var(--neon-cyan); text-shadow:0 0 8px rgba(0,245,212,0.5);">MINIMARKER STUDIO V4</div>
         <div style="font-size:10px; font-weight:700; color:var(--neon-pink); letter-spacing:1px;">BY ERVAN ALVIAN</div>
       </div>
-      <div style="display:flex; gap:6px; align-items:center;">
-        <button type="button" onclick="resetWorkspace()" style="background:rgba(239,68,68,0.16); color:#f87171; border:1.5px solid #f87171; border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🧹 BERSIHKAN</button>
-        <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🏠 HOME</button>
-      </div>
+      <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🏠 HOME</button>
     </div>
 
     <div id="autoSyncBanner" class="card hidden" style="border-color:var(--neon-pink); background:rgba(255,0,127,0.12); box-shadow:0 0 20px rgba(255,0,127,0.3);">
@@ -220,6 +217,13 @@
 <div><label style="font-size:11px;color:var(--muted);">KOLOM:</label><div style="display:flex;gap:4px;"><button type="button" onclick="stepSelectVal('colsSelect',-1)" style="padding:7px 10px;background:#07060e;color:var(--neon-yellow);border:1px solid var(--neon-yellow);border-radius:6px;font-weight:900;">-</button><select id="colsSelect" style="flex:1;margin:0;" onchange="stepSelectVal('colsSelect',0)"><option value="auto">Auto</option><option value="4">4 Kolom</option><option value="5">5 Kolom</option><option value="6">6 Kolom</option><option value="7">7 Kolom</option><option value="8">8 Kolom</option></select><button type="button" onclick="stepSelectVal('colsSelect',1)" style="padding:7px 10px;background:#07060e;color:var(--neon-yellow);border:1px solid var(--neon-yellow);border-radius:6px;font-weight:900;">+</button></div></div>
 <div><label style="font-size:11px;color:var(--muted);">BARIS:</label><div style="display:flex;gap:4px;"><button type="button" onclick="stepSelectVal('rowsSelect',-1)" style="padding:7px 10px;background:#07060e;color:var(--neon-pink);border:1px solid var(--neon-pink);border-radius:6px;font-weight:900;">-</button><select id="rowsSelect" style="flex:1;margin:0;" onchange="stepSelectVal('rowsSelect',0)"><option value="auto">Auto</option><option value="2">2 Baris</option><option value="3">3 Baris</option><option value="4">4 Baris</option><option value="5">5 Baris</option></select><button type="button" onclick="stepSelectVal('rowsSelect',1)" style="padding:7px 10px;background:#07060e;color:var(--neon-pink);border:1px solid var(--neon-pink);border-radius:6px;font-weight:900;">+</button></div></div>
 </div></div>
+<div style="display:flex; gap:8px; margin-bottom:8px;">
+  <button type="button" id="btnForceFullSheet" onclick="toggleForceFullSheet()" class="btn btn-secondary" style="flex:1.4; margin:0; padding:10px; font-size:12px;">📐 PAKSA SUSUNAN PENUH: ON</button>
+  </div>
+<div style="display:flex; gap:8px; margin-bottom:8px;">
+  <button type="button" onclick="clearAllOutsideLineProcesses()" class="btn btn-secondary" style="flex:1; margin:0; padding:10px; font-size:11.5px; border-color:var(--neon-yellow); color:var(--neon-yellow);">🚫 HAPUS SEMUA LUAR LINE</button>
+  <button type="button" onclick="clearWorkspaceAll()" class="btn btn-pink" style="flex:1; margin:0; padding:10px; font-size:11.5px;">🧹 BERSIHKAN LEMBAR KERJA</button>
+</div>
 <button class="btn" style="margin-bottom:8px;" onclick="generateMiniMarker()">🔥 BUAT MINI MARKER</button>
       <button class="btn btn-secondary" style="margin-bottom:12px;" onclick="loadSampleData()">✨ COBA CONTOH POLA</button>
 
@@ -325,9 +329,40 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
         <div>
           <label style="font-size:11px; color:var(--muted);">FABRIC:</label>
           <select id="qeFabric">
-            <option value="MA">MA</option><option value="T1">T1</option><option value="T2">T2</option>
-            <option value="T3">T3</option><option value="L2">L2</option><option value="N1">N1</option>
-          </select>
+            <option value="MA">MA (Main Fabric)</option>
+              <option value="T1">T1 (Trim/Fabric T1)</option>
+              <option value="T2">T2 (Trim/Fabric T2)</option>
+              <option value="T3">T3 (Trim/Fabric T3)</option>
+              <option value="T4">T4 (Trim/Fabric T4)</option>
+              <option value="T5">T5 (Trim/Fabric T5)</option>
+              <option value="T6">T6 (Trim/Fabric T6)</option>
+              <option value="T7">T7 (Trim/Fabric T7)</option>
+              <option value="T8">T8 (Trim/Fabric T8)</option>
+              <option value="T9">T9 (Trim/Fabric T9)</option>
+              <option value="T10">T10 (Trim/Fabric T10)</option>
+              <option value="L1">L1 (Lining L1)</option>
+              <option value="L2">L2 (Lining L2)</option>
+              <option value="L3">L3 (Lining L3)</option>
+              <option value="L4">L4 (Lining L4)</option>
+              <option value="L5">L5 (Lining L5)</option>
+              <option value="L6">L6 (Lining L6)</option>
+              <option value="L7">L7 (Lining L7)</option>
+              <option value="L8">L8 (Lining L8)</option>
+              <option value="L9">L9 (Lining L9)</option>
+              <option value="L10">L10 (Lining L10)</option>
+              <option value="N1">N1 (Mesh/Netting N1)</option>
+              <option value="N2">N2 (Mesh/Netting N2)</option>
+              <option value="N3">N3 (Mesh/Netting N3)</option>
+              <option value="N4">N4 (Mesh/Netting N4)</option>
+              <option value="N5">N5 (Mesh/Netting N5)</option>
+              <option value="N6">N6 (Mesh/Netting N6)</option>
+              <option value="N7">N7 (Mesh/Netting N7)</option>
+              <option value="N8">N8 (Mesh/Netting N8)</option>
+              <option value="N9">N9 (Mesh/Netting N9)</option>
+              <option value="N10">N10 (Mesh/Netting N10)</option>
+              <option value="N11">N11 (Mesh/Netting N11)</option>
+              <option value="N12">N12 (Mesh/Netting N12)</option>
+            </select>
         </div>
         <div>
           <label style="font-size:11px; color:var(--muted);">QTY / PAIR:</label>
@@ -372,5 +407,49 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
       <button type="button" class="btn btn-secondary" style="margin:0; padding:9px; font-size:12px;" onclick="closeExportFormatModal()">BATAL</button>
     </div>
   </div>
+
+<script id="neonBurnGlobalScript">
+(function() {
+  const st = document.createElement("style");
+  st.textContent = `
+    @keyframes neonBurnFlame {
+      0% { box-shadow: 0 0 8px #00f5d4, 0 0 20px #ff007f, 0 -8px 26px #fee440, inset 0 0 14px rgba(254,228,64,0.85); filter: brightness(1.38) saturate(1.4); transform: scale(0.95); }
+      45% { box-shadow: 0 -10px 30px #ff007f, 0 -16px 40px rgba(254,228,64,0.9), 0 0 24px #00f5d4, inset 0 0 18px rgba(255,0,127,0.7); filter: brightness(1.22); transform: scale(1.03); }
+      100% { filter: brightness(1); transform: scale(1); }
+    }
+    .neon-burning-active { animation: neonBurnFlame 0.55s cubic-bezier(0.22, 1, 0.36, 1) !important; position: relative; z-index: 9; }
+    .neon-ember-spark { position: fixed; pointer-events: none; border-radius: 50%; z-index: 99999999; will-change: transform, opacity; }
+  `;
+  document.head.appendChild(st);
+  const cols = ["#00f5d4", "#ff007f", "#fee440", "#ff5e00", "#ffffff"];
+  const triggerBurn = (el, x, y) => {
+    if (!el) return;
+    el.classList.remove("neon-burning-active");
+    void el.offsetWidth;
+    el.classList.add("neon-burning-active");
+    for (let i = 0; i < 16; i++) {
+      const sp = document.createElement("span");
+      sp.className = "neon-ember-spark";
+      const sz = 3.5 + Math.random() * 5, c = cols[i % cols.length];
+      sp.style.cssText = `width:${sz}px;height:${sz}px;left:${x}px;top:${y}px;background:${c};box-shadow:0 0 8px ${c},0 0 14px #ff007f;`;
+      document.body.appendChild(sp);
+      const ang = (-Math.PI / 2) + (Math.random() - 0.5) * 2.3, dist = 28 + Math.random() * 52;
+      sp.animate([
+        { transform: "translate(-50%,-50%) scale(1.25)", opacity: 1 },
+        { transform: `translate(calc(-50% + ${Math.cos(ang)*dist}px),calc(-50% + ${Math.sin(ang)*dist - 16}px)) scale(0.1)`, opacity: 0 }
+      ], { duration: 450 + Math.random() * 250, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }).onfinish = () => sp.remove();
+    }
+  };
+  document.addEventListener("touchstart", e => {
+    const t0 = e.touches && e.touches[0];
+    const btn = e.target && e.target.closest("button, .btn, .tab-btn, .dropzone");
+    if (btn && t0) triggerBurn(btn, t0.clientX, t0.clientY);
+  }, { passive: true });
+  document.addEventListener("mousedown", e => {
+    const btn = e.target && e.target.closest("button, .btn, .tab-btn, .dropzone");
+    if (btn) triggerBurn(btn, e.clientX, e.clientY);
+  }, { passive: true });
+})();
+</script>
 </body>
 </html>

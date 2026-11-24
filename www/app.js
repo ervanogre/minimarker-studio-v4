@@ -69,7 +69,7 @@ function detectProcessFromText(text, excludeName) {
     // Abaikan teks metadata DXF biasa (nama piece, qty, arah serat, fabric, ukuran, kode file)
     if (skipName && seg === skipName) return;
     if (/^(SEWING|CUT|BOUNDARY|PIECE|NAME|RVS|REVERSE|GRAIN|GRAINLINE|FOLD|MIRROR|PAIR|L\/R|A\/B|ALL\s*SIZE|SIZE)$/i.test(seg)) return;
-    if (/^(MA|T1|T2|T3|L1|L2|N1|L|R|A|B)$/i.test(seg)) return;
+    if (/^(MA|T1|T2|T3|L1|L(?:[1-9]|10)|N1|L|R|A|B)$/i.test(seg)) return;
     if (/^(\d+\s*[X*]|[X*]\s*\d+|\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?)/.test(seg)) return;
     if (/-S_\d+$/.test(seg) || /^JS[A-Z0-9]{4,}/i.test(seg) || seg.length < 2 || seg.length > 28) return;
     // Ambil apapun nama proses luar line yang tertulis (PREPARING, OCM, BORDIR, LASER, QUILTING, dll.)
@@ -180,16 +180,70 @@ function extractPiecesFromDxf(dxf) {
     for (const [blockName, block] of Object.entries(dxf.blocks)) {
       if (blockName.startsWith('*')) continue;
       const allPolys = [];
+      const textItems = [];
       let labelTexts = [blockName];
       (block.entities || []).forEach(ent => {
         if ((ent.type === 'LWPOLYLINE' || ent.type === 'POLYLINE') && ent.vertices && ent.vertices.length > 1) {
-          allPolys.push({ pts: ent.vertices.map(v => ({ x: v.x, y: v.y })) });
+          const pts = ent.vertices.map(v => ({ x: v.x, y: v.y }));
+          allPolys.push({ pts, b: getBounds([pts]) });
         } else if (ent.type === 'LINE' && ent.vertices && ent.vertices.length === 2) {
-          allPolys.push({ pts: ent.vertices.map(v => ({ x: v.x, y: v.y })) });
+          const pts = ent.vertices.map(v => ({ x: v.x, y: v.y }));
+          allPolys.push({ pts, b: getBounds([pts]) });
         } else if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && ent.text) {
-          labelTexts.push(ent.text.replace(/\\P/g, ' ').trim());
+          const cleanT = ent.text.replace(/\\P/g, ' ').trim();
+          const pos = ent.startPoint || ent.position || (ent.vertices && ent.vertices.at(0)) || null;
+          textItems.push({ text: cleanT, x: pos ? pos.x : null, y: pos ? pos.y : null });
+          labelTexts.push(cleanT);
         }
       });
+
+      // Kelompokkan poligon ke dalam sub-grup terpisah jika dalam 1 blok terdapat 2+ pola berdampingan (misal M01 & M16)
+      const subGroups = [];
+      allPolys.sort((a, b) => (b.b.width * b.b.height) - (a.b.width * a.b.height));
+      allPolys.forEach(item => {
+        if (item.b.width < 5 && item.b.height < 5) return;
+        let targetGrp = subGroups.find(g => {
+          const pad = 12;
+          return !(item.b.maxX < g.b.minX - pad || item.b.minX > g.b.maxX + pad || item.b.maxY < g.b.minY - pad || item.b.minY > g.b.maxY + pad);
+        });
+        if (!targetGrp) {
+          targetGrp = { polys: [], b: { ...item.b } };
+          subGroups.push(targetGrp);
+        } else {
+          targetGrp.b.minX = Math.min(targetGrp.b.minX, item.b.minX);
+          targetGrp.b.minY = Math.min(targetGrp.b.minY, item.b.minY);
+          targetGrp.b.maxX = Math.max(targetGrp.b.maxX, item.b.maxX);
+          targetGrp.b.maxY = Math.max(targetGrp.b.maxY, item.b.maxY);
+          targetGrp.b.width = targetGrp.b.maxX - targetGrp.b.minX;
+          targetGrp.b.height = targetGrp.b.maxY - targetGrp.b.minY;
+        }
+        targetGrp.polys.push(item);
+      });
+
+      if (subGroups.length > 1) {
+        subGroups.forEach(sg => {
+          const nearTexts = textItems.filter(ti => ti.x !== null && ti.x >= sg.b.minX - 40 && ti.x <= sg.b.maxX + 40 && ti.y >= sg.b.minY - 40 && ti.y <= sg.b.maxY + 40).map(ti => ti.text);
+          const sgTexts = nearTexts.length > 0 ? [blockName, ...nearTexts] : labelTexts;
+          const fullText = sgTexts.join(' | ').replace(/\s*-\s*/g, '-');
+          const cleanName = fullText.replace(/Sewing|Cut|Boundary|Piece|Name[:\s]*/gi, '').replace(/-S_\d+/gi, '').split('|').pop().trim().toUpperCase().substring(0, 26);
+          const normPolys = sg.polys.map((p, idx) => ({
+            pts: p.pts.map(pt => ({ x: pt.x - sg.b.minX, y: sg.b.maxY - pt.y })),
+            isOuter: idx === 0
+          }));
+          rawPieces.push({
+            name: cleanName || blockName.toUpperCase(),
+            sizeText: (sg.b.height / 10).toFixed(1) + '*' + (sg.b.width / 10).toFixed(1),
+            rawText: fullText,
+            polygons: normPolys,
+            width: sg.b.width,
+            height: sg.b.height,
+            fabric: 'MA',
+            qtyLabel: /\b(A\/B|L\/R|PAIR)\b/i.test(fullText) ? 'A/B' : '',
+            processLabel: detectProcessFromText(fullText, cleanName)
+          });
+        });
+        continue;
+      }
       if (allPolys.length > 0) {
         const bounds = getBounds(allPolys.map(p => p.pts));
         if (bounds.width < 5 && bounds.height < 5) continue;
@@ -308,13 +362,15 @@ function matchSpreadWithBomFA(spreadMap) {
 
 function normalizeBomFabricCode(rawCat) {
   const up = String(rawCat || '').trim().toUpperCase();
+  if (!up || /^SP(?:\b|\d|-|$)/i.test(up)) return null;
   if (/^MA(?:-|$)/.test(up)) return 'MA';
-  if (/^T1(?:-|$)/.test(up)) return 'T1';
-  if (/^T2(?:-|$)/.test(up)) return 'T2';
-  if (/^T3(?:-|$)/.test(up)) return 'T3';
-  if (/^(?:L1|L2|L3)(?:-|$)/.test(up)) return 'L2';
-  if (/^(?:N1|N2|N3)(?:-|$)/.test(up)) return 'N1';
-  return '';
+  const mT = up.match(/^(T(?:10|[1-9]))(?:-|$)/);
+  if (mT) return mT.at(1);
+  const mL = up.match(/^(L(?:10|[1-9]))(?:-|$)/);
+  if (mL) return mL.at(1);
+  const mN = up.match(/^(N(?:1[0-2]|[1-9]))(?:-|$)/);
+  if (mN) return mN.at(1);
+  return null;
 }
 
 function parseBomZNZFormat(workbook) {
@@ -572,7 +628,7 @@ function parseBomRows(rows, sheetName) {
       let shift = 0;
       const rawCat0 = String(row.at(colMap.cat) || '').trim().toUpperCase();
       const rawCat1 = String(row.at(colMap.cat + 1) || '').trim().toUpperCase();
-      if (!/^(MA|T1|T2|T3|L2|N1)$/.test(rawCat0) && /^(MA|T1|T2|T3|L2|N1)$/.test(rawCat1)) {
+      if (!/^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(rawCat0) && /^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(rawCat1)) {
         shift = 1;
       }
       const cat = String(row.at(colMap.cat + shift) || '').trim().toUpperCase();
@@ -580,7 +636,7 @@ function parseBomRows(rows, sheetName) {
       const shortCode = String(row.at(colMap.annot + shift) || '').trim();
       const engDesc = String(row.at(colMap.annotEng + shift) || '').trim();
       const compRaw = engDesc && engDesc !== "_" ? engDesc : shortCode;
-      if (/^(MA|T1|T2|T3|L2|N1)$/.test(cat) && /^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr) && compRaw) {
+      if (/^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(cat) && /^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr) && compRaw) {
         const parts = sizeStr.split(/[*xX]/).map(s => s.trim());
         const qty = parseInt(row.at(colMap.qty + shift)) || parseInt(parts.at(2)) || 1;
         const mCode = compRaw.match(/_([A-Z]{1,3}\d{2}[A-Z]?)\b/i) || compRaw.match(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?)\b/i) || compRaw.match(/\(([^)]+)\)/);
@@ -610,8 +666,8 @@ function parseBomRows(rows, sheetName) {
     row.forEach((cellVal, colIdx) => {
       const val = String(cellVal || '').trim(), upVal = val.toUpperCase();
       if (colIdx <= 1 && /^(MA|T1|T2|T3|N1)(?:\b|-)/.test(upVal)) leftFab = upVal.match(/^(MA|T1|T2|T3|N1)/).at(1);
-      if (colIdx >= 2 && colIdx <= 4 && /^(L2|L1)(?:\b|-)/.test(upVal)) midFab = upVal.match(/^(L2|L1)/).at(1);
-      if (/^(MA|T1|T2|T3|N1|L2)$/.test(upVal) && colIdx >= 6) {
+      if (colIdx >= 2 && colIdx <= 4 && /^(L(?:[1-9]|10)|L1)(?:\b|-)/.test(upVal)) midFab = upVal.match(/^(L(?:[1-9]|10)|L1)/).at(1);
+      if (/^(MA|T1|T2|T3|N1|L(?:[1-9]|10))$/.test(upVal) && colIdx >= 6) {
         const specName = String(row.at(colIdx + 1) || '').trim().toUpperCase();
         const specColor = String(row.at(colIdx + 3) || '').trim().toUpperCase();
         const specWidth = String(row.at(colIdx + 4) || '').trim().toUpperCase().replace(/^CUT\s+/i, '');
@@ -644,16 +700,45 @@ function applyColorwayMapping() {
   }
   parsedPieces = JSON.parse(JSON.stringify(window._cleanDxfPieces));
   const availableBom = bom.pieces.map((b, idx) => ({ ...b, idx, used: false }));
+  const preMatchedIds = new Set();
   parsedPieces.forEach(p => {
+    const up = String(p.rawText || '').toUpperCase();
+    const d1 = p.width / 10, d2 = p.height / 10;
+    let bestCodeItem = null, bestCodeDiff = Infinity;
+    availableBom.forEach(b => {
+      if (b.used || !b.codes || b.codes.length === 0) return;
+      const hit = b.codes.some(c => c.length >= 2 && new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up));
+      if (!hit) return;
+      const [s1, s2] = String(b.size || '').split('*').map(Number);
+      const diff = (s1 && s2) ? Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1)) : 0;
+      if (diff <= 4.5 && diff < bestCodeDiff) { bestCodeDiff = diff; bestCodeItem = b; }
+    });
+    if (bestCodeItem) {
+      bestCodeItem.used = true;
+      preMatchedIds.add(p.id);
+      p.bomOrder = bestCodeItem.idx;
+      p.fabric = bestCodeItem.fabric;
+      p.name = bestCodeItem.name || p.name;
+      p.sizeText = bestCodeItem.size;
+      p.qtyLabel = bestCodeItem.qty > 1 ? classifyQtyBySymmetry(p, bestCodeItem.qty) : "";
+      p.isPairAB = bestCodeItem.qty > 1 && p.qtyLabel === 'A/B';
+    }
+  });
+
+  parsedPieces.forEach(p => {
+    if (preMatchedIds.has(p.id)) return;
     const d1 = p.width / 10, d2 = p.height / 10, up = p.rawText.toUpperCase();
     let bestItem = null, bestScore = Infinity;
     availableBom.forEach(b => {
       const [s1, s2] = b.size.split('*').map(Number);
       if (!s1 || !s2) return;
       const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
-      if (minDiff <= 2.2) {
-        let score = minDiff + (b.used ? 10 : 0);
-        if (b.codes && b.codes.some(c => up.includes(c))) score -= 5;
+      const dxfHasSpecificFab = /^(N(?:[1-9]|1[0-2])|L(?:[1-9]|10)|T(?:[1-9]|10))$/.test(String(p.fabric || ''));
+      const fabMismatch = dxfHasSpecificFab && b.fabric && b.fabric !== p.fabric;
+      if (!fabMismatch && minDiff <= 2.2) {
+        let score = minDiff + (b.used ? 30 : 0) + (b.idx * 0.015);
+        if (b.codes && b.codes.some(c => c.length >= 2 && up.includes(c))) score -= 15;
+        if (b.fabric === p.fabric) score -= 4;
         if (score < bestScore) { bestScore = score; bestItem = b; }
       }
     });
@@ -670,23 +755,14 @@ function applyColorwayMapping() {
       if (matchingSubBom.length > 0) {
         matchingSubBom.sort((a, b) => a.idx - b.idx);
         bestItem = matchingSubBom.at(0);
-        if (matchingSubBom.length >= 2) {
-          matchingSubBom.forEach(sb => { sb.used = true; });
-          const combinedNames = [...new Set(matchingSubBom.map(sb => sb.name).filter(Boolean))].join(' / ');
-          if (combinedNames) bestItem = { ...bestItem, name: combinedNames };
-        }
+        bestItem.used = true;
       } else {
         // Fallback: ambil baris BOM belum terpakai paling awal di fabric yang sama (misal No. 1 & 2 BOM yang digabung di DXF)
         const unusedSameFab = availableBom.filter(b => !b.used && b.fabric === p.fabric).sort((a, b) => a.idx - b.idx);
-        const unusedPool = unusedSameFab.length > 0 ? unusedSameFab : availableBom.filter(b => !b.used).sort((a, b) => a.idx - b.idx);
+        const unusedPool = unusedSameFab.filter(b => { const [s1, s2] = b.size.split('*').map(Number); return s1 && s2 && Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1)) <= 4.0; }).sort((a, b) => a.idx - b.idx);
         if (unusedPool.length > 0) {
           bestItem = unusedPool.at(0);
-          // Jika ada 2 baris BOM berurutan yang belum terpakai di awal (misal idx 0 & idx 1), gabungkan keduanya
-          if (unusedPool.length >= 2 && unusedPool.at(1).idx === bestItem.idx + 1) {
-            unusedPool.at(1).used = true;
-            const combName = [bestItem.name, unusedPool.at(1).name].filter(Boolean).join(' / ');
-            bestItem = { ...bestItem, name: combName };
-          }
+          // Pertahankan tiap baris BOM terpisah
         }
       }
     }
@@ -717,9 +793,14 @@ function applyColorwayMapping() {
     if (!s1 || !s2) return;
     const matchDxf = parsedPieces.find(p => {
       if (p.fabric === b.fabric) return false;
+      const up = String(p.rawText || '').toUpperCase();
+      if (b.codes && b.codes.length > 0) {
+        const sameCode = b.codes.some(c => c.length >= 2 && new RegExp('(?:^|[^A-Z0-9])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^A-Z0-9]|$)', 'i').test(up));
+        if (!sameCode) return false;
+      }
       const d1 = p.width / 10, d2 = p.height / 10;
       const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
-      return minDiff <= 2.2;
+      return minDiff <= 1.2;
     });
     const uniqueKey = `${b.fabric}|${b.name || (matchDxf && matchDxf.name)}|${b.size}`;
     if (matchDxf && !existingFabKeys.has(uniqueKey)) {
@@ -737,6 +818,9 @@ function applyColorwayMapping() {
   });
   if (extraCrossFabPieces.length > 0) {
     parsedPieces = parsedPieces.concat(extraCrossFabPieces);
+  }
+  parsedPieces.sort((a, b) => (a.bomOrder ?? 9999) - (b.bomOrder ?? 9999));
+  if (false) {
   }
 
   renderPieceMappingList();
@@ -800,7 +884,7 @@ function handleProcessDropdownChange(idx, val) {
 function renderPieceMappingList() {
   const container = document.getElementById('pieceMappingList');
   if (!container || parsedPieces.length === 0) return;
-  const fabrics = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
+  const fabrics = ['MA', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9', 'N10', 'N11', 'N12'];
   const processes = ['', 'OCM', 'BORDIR', 'AUTOMATION-OCM', 'OCM-BORDIR', 'AUTOMATION', 'HEAT EMBOSSED', 'SILKSCREEN'];
   const qtys = ['', 'A/B', 'Ax2 Bx2', 'X2', 'X3', 'X4', 'X6'];
 
@@ -939,7 +1023,7 @@ function generateMiniMarker() {
   const cwKey = document.getElementById('colorwaySelect')?.value;
   const bom = excelColorways[cwKey];
 
-  const defaultFabOrder = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
+  const defaultFabOrder = ['MA', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9', 'N10', 'N11', 'N12'];
   // Urutkan kategori fabric sesuai urutan kemunculan pertama di BOM (jika BOM tersedia)
   const bomFabSeq = [];
   if (bom && Array.isArray(bom.pieces)) {
@@ -1088,9 +1172,10 @@ function generateMiniMarker() {
       const piece = slot.piece || slot;
       const col = slot.col || 0, row = slot.row || 0;
       const cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
-      const cellW = baseCellW * cSpan;
-      const cellH = baseCellH * rSpan;
-      const cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
+      const cellW = slot.isShelfSlot ? slot.absW : (baseCellW * cSpan);
+      const cellH = slot.isShelfSlot ? slot.absH : (baseCellH * rSpan);
+      const cx = slot.isShelfSlot ? (boxX + 12 + slot.absX) : (boxX + 12 + col * baseCellW);
+      const cy = slot.isShelfSlot ? (boxY + 10 + slot.absY) : (boxY + 10 + row * baseCellH);
       canvas._hitBoxes.push({ x: cx, y: cy, w: cellW, h: cellH, piece });
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
 
@@ -1168,7 +1253,7 @@ function generateMiniMarker() {
             const py = finalY + ry * pairScale;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
-          ctx.strokeStyle = poly.isOuter ? '#000000' : '#64748b';
+          ctx.strokeStyle = poly.isOuter ? '#0055cc' : '#64748b';
           ctx.lineWidth = poly.isOuter ? 2.1 : 0.9;
           if (poly.isOuter) ctx.closePath();
           ctx.stroke();
@@ -1901,7 +1986,7 @@ function parseMasterOrderCsv(rows) {
     }
 
     let fabCode = '';
-    const mKode = kodeRaw.match(/\b(MA|T1|T2|T3|T5|L2|N[1-7])\b/);
+    const mKode = kodeRaw.match(/\b(MA|T1|T2|T3|T5|L(?:[1-9]|10)|N(?:[1-9]|1[0-2]))\b/);
     if (mKode) {
       fabCode = mKode.at(1);
     } else if (bomSpecToFab.length > 0) {
@@ -1986,7 +2071,7 @@ function normalizeBomFabricCode(rawCat) {
   if (/^T1(?:-|$)/.test(up)) return 'T1';
   if (/^T2(?:-|$)/.test(up)) return 'T2';
   if (/^T3(?:-|$)/.test(up)) return 'T3';
-  if (/^(?:L1|L2|L3)(?:-|$)/.test(up)) return 'L2';
+  if (/^(?:L1|L(?:[1-9]|10)|L3)(?:-|$)/.test(up)) return 'L2';
   if (/^(?:N1|N2|N3)(?:-|$)/.test(up)) return 'N1';
   return '';
 }
@@ -2246,7 +2331,7 @@ function parseBomRows(rows, sheetName) {
       let shift = 0;
       const rawCat0 = String(row.at(colMap.cat) || '').trim().toUpperCase();
       const rawCat1 = String(row.at(colMap.cat + 1) || '').trim().toUpperCase();
-      if (!/^(MA|T1|T2|T3|L2|N1)$/.test(rawCat0) && /^(MA|T1|T2|T3|L2|N1)$/.test(rawCat1)) {
+      if (!/^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(rawCat0) && /^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(rawCat1)) {
         shift = 1;
       }
       const cat = String(row.at(colMap.cat + shift) || '').trim().toUpperCase();
@@ -2254,7 +2339,7 @@ function parseBomRows(rows, sheetName) {
       const shortCode = String(row.at(colMap.annot + shift) || '').trim();
       const engDesc = String(row.at(colMap.annotEng + shift) || '').trim();
       const compRaw = engDesc && engDesc !== "_" ? engDesc : shortCode;
-      if (/^(MA|T1|T2|T3|L2|N1)$/.test(cat) && /^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr) && compRaw) {
+      if (/^(MA|T1|T2|T3|L(?:[1-9]|10)|N1)$/.test(cat) && /^\d+(\.\d+)?\s*[*xX]\s*\d+(\.\d+)?/.test(sizeStr) && compRaw) {
         const parts = sizeStr.split(/[*xX]/).map(s => s.trim());
         const qty = parseInt(row.at(colMap.qty + shift)) || parseInt(parts.at(2)) || 1;
         const mCode = compRaw.match(/_([A-Z]{1,3}\d{2}[A-Z]?)\b/i) || compRaw.match(/-(M\d{2}|O\d{2}|B\d{2}[A-Z]?|SS\d{2}[A-Z]?)\b/i) || compRaw.match(/\(([^)]+)\)/);
@@ -2284,8 +2369,8 @@ function parseBomRows(rows, sheetName) {
     row.forEach((cellVal, colIdx) => {
       const val = String(cellVal || '').trim(), upVal = val.toUpperCase();
       if (colIdx <= 1 && /^(MA|T1|T2|T3|N1)(?:\b|-)/.test(upVal)) leftFab = upVal.match(/^(MA|T1|T2|T3|N1)/).at(1);
-      if (colIdx >= 2 && colIdx <= 4 && /^(L2|L1)(?:\b|-)/.test(upVal)) midFab = upVal.match(/^(L2|L1)/).at(1);
-      if (/^(MA|T1|T2|T3|N1|L2)$/.test(upVal) && colIdx >= 6) {
+      if (colIdx >= 2 && colIdx <= 4 && /^(L(?:[1-9]|10)|L1)(?:\b|-)/.test(upVal)) midFab = upVal.match(/^(L(?:[1-9]|10)|L1)/).at(1);
+      if (/^(MA|T1|T2|T3|N1|L(?:[1-9]|10))$/.test(upVal) && colIdx >= 6) {
         const specName = String(row.at(colIdx + 1) || '').trim().toUpperCase();
         const specColor = String(row.at(colIdx + 3) || '').trim().toUpperCase();
         const specWidth = String(row.at(colIdx + 4) || '').trim().toUpperCase().replace(/^CUT\s+/i, '');
@@ -2727,7 +2812,7 @@ function buildEditableVectorPdf() {
   const bom = excelColorways[cwKey];
   const bomFabSeq = [];
   if (bom && Array.isArray(bom.pieces)) bom.pieces.forEach(bp => { if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric); });
-  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'L2', 'N1'])].filter(f => parsedPieces.some(p => p.fabric === f));
+  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9', 'N10', 'N11', 'N12'])].filter(f => parsedPieces.some(p => p.fabric === f));
   const fabricNumberMap = {}; activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
   if ((typeof isAutoSyncMode !== 'undefined' && isAutoSyncMode) && window._menu1MasterOrderMap && Object.keys(window._menu1MasterOrderMap).length > 0) {
     parsedPieces.forEach(p => {
@@ -2792,8 +2877,10 @@ function buildEditableVectorPdf() {
       const piece = slot.piece || slot;
       const col = slot.col || 0, row = slot.row || 0;
       const cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
-      const cellW = baseCellW * cSpan, cellH = baseCellH * rSpan;
-      const cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
+      const cellW = slot.isShelfSlot ? slot.absW : (baseCellW * cSpan);
+      const cellH = slot.isShelfSlot ? slot.absH : (baseCellH * rSpan);
+      const cx = slot.isShelfSlot ? (boxX + 12 + slot.absX) : (boxX + 12 + col * baseCellW);
+      const cy = slot.isShelfSlot ? (boxY + 10 + slot.absY) : (boxY + 10 + row * baseCellH);
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1);
       const circleR = Math.min(14, baseCellH * 0.075);
       const topSpace = piece.processLabel ? (Math.max(procSize, 10) + 10) : 8;
@@ -2835,7 +2922,7 @@ function buildEditableVectorPdf() {
 
       (piece.polygons || []).forEach(poly => {
         const pts = poly.pts || []; if (pts.length < 2) return;
-        doc.setDrawColor(poly.isOuter ? 0 : 100, poly.isOuter ? 0 : 116, poly.isOuter ? 0 : 139); doc.setLineWidth((poly.isOuter ? 2.1 : 0.9) * sx);
+        doc.setDrawColor(poly.isOuter ? 0 : 100, poly.isOuter ? 85 : 116, poly.isOuter ? 204 : 139); doc.setLineWidth((poly.isOuter ? 2.1 : 0.9) * sx);
         const mapped = pts.map(pt => [(finalX + (piece.autoRotate90 ? (piece.height - pt.y) : pt.x) * pairScale) * sx, (finalY + (piece.autoRotate90 ? pt.x : pt.y) * pairScale) * sy]);
         for (let i = 0; i < mapped.length - 1; i++) { const p1 = mapped.at(i), p2 = mapped.at(i + 1); doc.line(p1.at(0), p1.at(1), p2.at(0), p2.at(1)); }
         if (poly.isOuter && mapped.length > 2) { const pLast = mapped.at(-1), pFirst = mapped.at(0); doc.line(pLast.at(0), pLast.at(1), pFirst.at(0), pFirst.at(1)); }
@@ -3019,7 +3106,57 @@ function computeDynamicGridLayout(piecesList, customCols, customRows, sampleBoxW
   let globalUniformScale = normalScales[Math.floor(normalScales.length * 0.15)] || normalScales.at(0) || 0.25;
   if (!isFinite(globalUniformScale) || globalUniformScale <= 0) globalUniformScale = 0.25;
 
-  return { cols, rowsPerPage, pages, globalUniformScale };
+  const usableW = sampleBoxW - 24;
+  const usableH = sampleBoxH - 18;
+  const fullFilledPages = pages.map(pgSlots => {
+    if (pgSlots.length === 0) return [];
+    const hasSpan = pgSlots.some(s => (s.colSpan || 1) > 1 || (s.rowSpan || 1) > 1);
+    const maxUsedCol = Math.max(...pgSlots.map(s => (s.col || 0) + (s.colSpan || 1)));
+    const maxUsedRow = Math.max(...pgSlots.map(s => (s.row || 0) + (s.rowSpan || 1)));
+    const effCols = Math.max(1, maxUsedCol);
+    const effRows = Math.max(1, maxUsedRow);
+    const colW = usableW / effCols;
+
+    // Jika tidak ada span 2x2 dan semua item 1x1, kolom terakhir otomatis menjadi +1 baris (misal 4 -> 5 baris) agar penuh merata
+    if (!hasSpan && pgSlots.length > effCols) {
+      const basePerCol = Math.floor(pgSlots.length / effCols);
+      const remainder = pgSlots.length % effCols;
+      const converted = [];
+      let ptr = 0;
+      for (let c = 0; c < effCols; c++) {
+        const itemsInThisCol = basePerCol + (c >= (effCols - remainder) ? 1 : 0);
+        const thisRowH = usableH / Math.max(1, itemsInThisCol);
+        for (let r = 0; r < itemsInThisCol && ptr < pgSlots.length; r++) {
+          const s = pgSlots.at(ptr++);
+          converted.push({
+            piece: s.piece,
+            absX: c * colW,
+            absY: r * thisRowH,
+            absW: colW,
+            absH: thisRowH,
+            colSpan: 1,
+            rowSpan: 1,
+            isShelfSlot: true
+          });
+        }
+      }
+      return converted;
+    }
+
+    const rowH = usableH / effRows;
+    return pgSlots.map(s => ({
+      piece: s.piece,
+      absX: (s.col || 0) * colW,
+      absY: (s.row || 0) * rowH,
+      absW: (s.colSpan || 1) * colW,
+      absH: (s.rowSpan || 1) * rowH,
+      colSpan: s.colSpan || 1,
+      rowSpan: s.rowSpan || 1,
+      isShelfSlot: true
+    }));
+  });
+
+  return { isShelf: true, cols, rowsPerPage, pages: fullFilledPages, globalUniformScale };
 }
 
 
@@ -3033,7 +3170,7 @@ window.openQuickPatternEditor = function(piece) {
     modal.style.cssText = "position:fixed; inset:0; z-index:9999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:16px;";
     document.body.appendChild(modal);
   }
-  const fabrics = ['MA', 'T1', 'T2', 'T3', 'L2', 'N1'];
+  const fabrics = ['MA', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9', 'N10', 'N11', 'N12'];
   const qtys = ['', 'A/B', 'Ax2 Bx2', 'X2', 'X3', 'X4', 'X6'];
   const procs = ['', 'BORDIR', 'OCM', 'AUTOMATION', 'AUTOMATION-OCM', 'OCM-BORDIR', 'HEAT EMBOSSED', 'SILKSCREEN', 'PREPARING', 'SABLON'];
   const esc = (s) => String(s || '').replace(/"/g, '&quot;');
@@ -3157,7 +3294,7 @@ function buildEditableCorelSvgPages() {
   }
   const bomFabSeq = [];
   if (bom && Array.isArray(bom.pieces)) bom.pieces.forEach(bp => { if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric); });
-  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'L2', 'N1'])].filter(f => parsedPieces.some(p => p.fabric === f));
+  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L10', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9', 'N10', 'N11', 'N12'])].filter(f => parsedPieces.some(p => p.fabric === f));
   const fabricNumberMap = {}; activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
   const sortedPieces = [...parsedPieces].sort((a, b) => {
     const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
@@ -3195,7 +3332,8 @@ function buildEditableCorelSvgPages() {
     const baseCellW = (boxW - 24) / cols, baseCellH = (boxH - 18) / rowsPerPage;
     pagePieces.forEach(slot => {
       const piece = slot.piece || slot, col = slot.col || 0, row = slot.row || 0, cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
-      const cellW = baseCellW * cSpan, cellH = baseCellH * rSpan, cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
+      const cellW = slot.isShelfSlot ? slot.absW : (baseCellW * cSpan), cellH = slot.isShelfSlot ? slot.absH : (baseCellH * rSpan);
+      const cx = slot.isShelfSlot ? (boxX + 12 + slot.absX) : (boxX + 12 + col * baseCellW), cy = slot.isShelfSlot ? (boxY + 10 + slot.absY) : (boxY + 10 + row * baseCellH);
       const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1), circleR = Math.min(14, baseCellH * 0.075);
       const topSpace = piece.processLabel ? (Math.max(procSize, 10) + 10) : 8, bottomSpace = Math.round(labelSize * 3.0) + 16;
       const leftOffset = (circleR * 2) + 8, rightSpace = piece.qtyLabel ? 34 : 10;
@@ -3223,7 +3361,7 @@ function buildEditableCorelSvgPages() {
       (piece.polygons || []).forEach(poly => {
         const pts = poly.pts || []; if (pts.length < 2) return;
         const ptsStr = pts.map(pt => `${(finalX + (piece.autoRotate90 ? (piece.height - pt.y) : pt.x) * pairScale).toFixed(2)},${(finalY + (piece.autoRotate90 ? pt.x : pt.y) * pairScale).toFixed(2)}`).join(' ');
-        els.push(`<${poly.isOuter ? 'polygon' : 'polyline'} points="${ptsStr}" fill="none" stroke="${poly.isOuter ? '#000000' : '#64748b'}" stroke-width="${poly.isOuter ? '2.1' : '0.9'}"/>`);
+        els.push(`<${poly.isOuter ? 'polygon' : 'polyline'} points="${ptsStr}" fill="none" stroke="${poly.isOuter ? '#0055cc' : '#64748b'}" stroke-width="${poly.isOuter ? '2.1' : '0.9'}"/>`);
       });
       if (piece.qtyLabel) {
         const qSz = Math.max(labelSize - 2, 10), labelX = finalX + finalW + 5, labelY = Math.max(cy + 16, finalY + 11);
@@ -3318,60 +3456,213 @@ window.saveAllColorwaysBatch = async function(format) {
   }
 })();
 
-function resetWorkspace() {
-  if (!confirm("Bersihkan seluruh lembar kerja (DXF, BOM, Planning Spread, dan Preview)?")) return;
-  if (typeof parsedPieces !== 'undefined') parsedPieces = [];
-  if (typeof excelColorways !== 'undefined') excelColorways = {};
-  if (typeof bomTemplates !== 'undefined') bomTemplates = {};
-  if (typeof generatedCanvases !== 'undefined') {
-    generatedCanvases.forEach(c => { c.width = 1; c.height = 1; });
-    generatedCanvases = [];
-  }
-  currentStyleName = 'MINI_MARKER';
-  currentColorwayName = 'DEFAULT';
 
-  ['dxfInput', 'excelInput', 'spreadInput'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  ['styleNoInput', 'orderNoInput'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-
-  const dxfZone = document.getElementById('dxfZone');
-  if (dxfZone) dxfZone.classList.remove('loaded');
-  const dxfStatus = document.getElementById('dxfStatus');
-  if (dxfStatus) dxfStatus.innerHTML = '📐 Ketuk untuk Unggah File Pola (.DXF)';
-
-  const excelZone = document.getElementById('excelZone');
-  if (excelZone) excelZone.classList.remove('loaded');
-  const excelStatus = document.getElementById('excelStatus');
-  if (excelStatus) excelStatus.innerHTML = '📊 Ketuk untuk Unggah BOM Excel (.XLSX/.CSV)';
-
-  const spreadZone = document.getElementById('spreadZone');
-  if (spreadZone) spreadZone.classList.remove('loaded');
-  const spreadStatus = document.getElementById('spreadStatus');
-  if (spreadStatus) spreadStatus.innerHTML = '📋 Ketuk untuk Unggah File PLANNING SPREAD (.CSV/.XLSX)';
-
-  const cwBox = document.getElementById('colorwayBox');
-  if (cwBox) cwBox.classList.add('hidden');
-  const cwSel = document.getElementById('colorwaySelect');
-  if (cwSel) cwSel.innerHTML = '';
-
-  const resArea = document.getElementById('resultArea');
-  if (resArea) resArea.classList.add('hidden');
-  const markerCont = document.getElementById('markerContainer');
-  if (markerCont) markerCont.innerHTML = '';
-
-  const syncLog = document.getElementById('autoSyncLog');
-  if (syncLog) { syncLog.innerHTML = ''; syncLog.classList.add('hidden'); }
-
-  const mapList = document.getElementById('pieceMappingList');
-  if (mapList) mapList.innerHTML = '<div class="card-sub">Belum ada file DXF yang dimuat.</div>';
-
-  const dynProc = document.getElementById('dynamicProcessColors');
-  if (dynProc) dynProc.innerHTML = '<div class="card-sub">Klik "Buat Mini Marker" terlebih dahulu untuk memunculkan proses.</div>';
-
-  window.scrollTo(0, 0);
+if (typeof parseExcelBom === "function" && !window._wrappedSpGuard) {
+  window._wrappedSpGuard = true;
+  const _origParseBom = parseExcelBom;
+  parseExcelBom = function() {
+    const res = _origParseBom.apply(this, arguments);
+    [excelColorways, bomTemplates].forEach(store => {
+      if (!store) return;
+      Object.values(store).forEach(cw => {
+        if (cw && Array.isArray(cw.pieces)) {
+          cw.pieces = cw.pieces.filter(p => !/^SP(\b|\d+)/i.test(String(p.fabric || '').trim()));
+        }
+        if (cw && cw.fabricSpecs) {
+          Object.keys(cw.fabricSpecs).forEach(k => { if (/^SP(\b|\d+)/i.test(k.trim())) delete cw.fabricSpecs[k]; });
+        }
+      });
+    });
+    return res;
+  };
 }
+
+// === TOMBOL RESET LEMBAR, PAKSA SUSUNAN PENUH, & AUTO 1 LEMBAR BEBAS ARAH (TANPA UBAH SKALA) ===
+window._forceFullSheetMode = true;
+
+window.toggleForceFullSheet = function() {
+  window._forceFullSheetMode = !window._forceFullSheetMode;
+  const btn = document.getElementById("btnForceFullSheet");
+  if (btn) {
+    btn.innerHTML = window._forceFullSheetMode ? "📐 PAKSA SUSUNAN PENUH: ON" : "📐 PAKSA SUSUNAN PENUH: OFF";
+    btn.style.borderColor = window._forceFullSheetMode ? "var(--neon-cyan)" : "var(--muted)";
+  }
+  if (typeof forceInstantCanvasRefresh === "function") forceInstantCanvasRefresh();
+  else if (typeof generateMiniMarker === "function") generateMiniMarker();
+};
+
+window.resetSheetLayout = function() {
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setVal("colsSelect", "auto");
+  setVal("rowsSelect", "auto");
+  setVal("titleFontSize", 38);
+  setVal("labelFontSize", 14);
+  setVal("processFontSize", 13);
+  setVal("fabricFontSize", 14);
+  window._forceFullSheetMode = true;
+  const btn = document.getElementById("btnForceFullSheet");
+  if (btn) btn.innerHTML = "📐 PAKSA SUSUNAN PENUH: ON";
+  if (typeof saveLayoutPreferences === "function") saveLayoutPreferences(false);
+  if (typeof forceInstantCanvasRefresh === "function") forceInstantCanvasRefresh();
+  else if (typeof generateMiniMarker === "function") generateMiniMarker();
+};
+
+// Perbarui computeCompactShelfLayout agar bebas arah (0°/90°), memaksimalkan 1 lembar penuh, & menghormati saklar Paksa Susunan Penuh
+window.computeCompactShelfLayout = function(piecesList, sampleBoxW, sampleBoxH, labelSize, procSize) {
+  const totalCount = piecesList.length;
+  if (totalCount === 0) return { isShelf: true, cols: 6, rowsPerPage: 4, pages: [[]], globalUniformScale: 0.25 };
+
+  const usableW = sampleBoxW - 24;
+  const usableH = sampleBoxH - 18;
+  const topSpDefault = Math.max(procSize || 12, 10) + 12;
+  const botSpDefault = Math.round(labelSize * 2.9) + 16;
+
+  // Bebas arah (0° / 90°): pilih orientasi (horizontal vs vertikal) yang paling padat menghemat luas kotak A4
+  const pageAspect = usableW / Math.max(usableH, 1);
+  piecesList.forEach(p => {
+    const isRaincover = /RAINCOVER|\bRC-/i.test(String(p.name || '') + ' ' + String(p.rawText || ''));
+    if (isRaincover) {
+      p.autoRotate90 = (p.width > p.height); // Tegakkan agar proporsional dalam slot besar
+    } else {
+      // Bebas arah: sesuaikan rasio komponen dengan rasio lembar A4 agar susunan 1 lembar maksimal
+      const ratioNormal = Math.abs((p.width / Math.max(p.height, 1)) - pageAspect);
+      const ratioRot = Math.abs((p.height / Math.max(p.width, 1)) - pageAspect);
+      p.autoRotate90 = ratioRot < ratioNormal * 0.88;
+    }
+  });
+
+  function simulatePack(scale) {
+    const pages = [];
+    let curPage = [];
+    let curX = 0, curY = 0, rowMaxH = 0;
+
+    for (let i = 0; i < piecesList.length; i++) {
+      const p = piecesList[i];
+      const ew = p.autoRotate90 ? p.height : p.width;
+      const eh = p.autoRotate90 ? p.width : p.height;
+      const cR = 13, lOff = (cR * 2) + 8, rOff = p.qtyLabel ? 36 : 12;
+      const topSp = p.processLabel ? topSpDefault : 8;
+      const drawW = ew * scale, drawH = eh * scale;
+      const blockW = Math.min(usableW, Math.max(drawW + lOff + rOff + 8, 112));
+      const blockH = Math.min(usableH, Math.max(drawH + topSp + botSpDefault, 72));
+
+      if (curX > 0 && (curX + blockW > usableW + 1)) {
+        curX = 0; curY += rowMaxH + 3; rowMaxH = 0;
+      }
+      if (curY > 0 && (curY + blockH > usableH + 1)) {
+        pages.push(curPage); curPage = []; curX = 0; curY = 0; rowMaxH = 0;
+      }
+      curPage.push({ piece: p, absX: curX, absY: curY, absW: blockW, absH: blockH, isShelfSlot: true });
+      curX += blockW + 3;
+      if (blockH > rowMaxH) rowMaxH = blockH;
+    }
+    if (curPage.length > 0) pages.push(curPage);
+    return pages;
+  }
+
+  // Maksimalkan muat dalam 1 lembar penuh (untuk <= 48 komponen) tanpa mengubah skala seragam antar-komponen
+  const targetMaxPages = totalCount <= 48 ? 1 : (totalCount <= 92 ? 2 : 3);
+  let low = 0.08, high = 1.4, bestScale = 0.25, bestPages = simulatePack(0.25);
+  for (let step = 0; step < 20; step++) {
+    const mid = (low + high) / 2;
+    const packed = simulatePack(mid);
+    if (packed.length <= targetMaxPages) { bestScale = mid; bestPages = packed; low = mid; }
+    else { high = mid; }
+  }
+
+  // Jika Paksa Susunan Penuh aktif, rentangkan seluruh sel agar memenuhi 100% bidang bingkai tanpa mengubah skala pattern!
+  if (window._forceFullSheetMode !== false) {
+    bestPages.forEach(pg => {
+      if (pg.length === 0) return;
+      const maxUsedY = Math.max(...pg.map(s => s.absY + s.absH));
+      const extraY = Math.max(0, usableH - maxUsedY);
+      const rowGroups = [];
+      pg.forEach(s => {
+        let grp = rowGroups.find(g => Math.abs(g.y - s.absY) < 4);
+        if (!grp) { grp = { y: s.absY, items: [] }; rowGroups.push(grp); }
+        grp.items.push(s);
+      });
+      const addPerRow = rowGroups.length > 0 ? (extraY / rowGroups.length) : 0;
+      rowGroups.forEach((grp, rIdx) => {
+        const rowUsedW = grp.items.reduce((acc, it) => acc + it.absW, 0) + Math.max(0, grp.items.length - 1) * 3;
+        const extraRowW = Math.max(0, usableW - rowUsedW);
+        const addPerItemW = grp.items.length > 0 ? (extraRowW / grp.items.length) : 0;
+        let shiftX = 0;
+        grp.items.forEach(it => {
+          it.absX += shiftX; it.absW += addPerItemW;
+          it.absY += rIdx * addPerRow; it.absH += addPerRow;
+          shiftX += addPerItemW;
+        });
+      });
+    });
+  }
+
+  piecesList.forEach(p => { p.maxAllowedScale = bestScale; });
+  return { isShelf: true, cols: 6, rowsPerPage: 4, pages: bestPages, globalUniformScale: bestScale };
+};
+
+
+// === HAPUS SEMUA PROSES LUAR LINE & BERSIHKAN LEMBAR KERJA ===
+window.clearAllOutsideLineProcesses = function() {
+  if (typeof parsedPieces === "undefined" || parsedPieces.length === 0) {
+    alert("Belum ada pola yang dimuat.");
+    return;
+  }
+  parsedPieces.forEach(p => { p.processLabel = ""; });
+  if (typeof window._cleanDxfPieces !== "undefined" && Array.isArray(window._cleanDxfPieces)) {
+    window._cleanDxfPieces.forEach(p => { p.processLabel = ""; });
+  }
+  Object.values(excelColorways || {}).forEach(cw => {
+    if (cw && Array.isArray(cw.pieces)) cw.pieces.forEach(bp => { bp.processLabel = ""; });
+  });
+  if (typeof renderPieceMappingList === "function") renderPieceMappingList();
+  if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+  if (typeof forceInstantCanvasRefresh === "function") forceInstantCanvasRefresh();
+  else if (typeof generateMiniMarker === "function") generateMiniMarker();
+};
+
+window.clearWorkspaceAll = function() {
+  if (!confirm("Bersihkan seluruh lembar kerja (DXF, BOM, Planning, & Pratinjau)?")) return;
+  parsedPieces = [];
+  window._cleanDxfPieces = [];
+  window._menu1MasterOrderMap = {};
+  excelColorways = {};
+  bomTemplates = {};
+  generatedCanvases = [];
+  currentStyleName = "";
+  currentColorwayName = "";
+
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setVal("styleNoInput", "");
+  setVal("orderNoInput", "");
+  setVal("dxfFileInput", "");
+  setVal("excelFileInput", "");
+  setVal("planningSpreadInput", "");
+  setVal("planningReiInput", "");
+
+  const cwSel = document.getElementById("colorwaySelect");
+  if (cwSel) cwSel.innerHTML = "";
+  const cwWrap = document.getElementById("colorwaySelectorWrap");
+  if (cwWrap) cwWrap.classList.add("hidden");
+
+  const dxfZone = document.getElementById("dxfZone");
+  if (dxfZone) dxfZone.classList.remove("loaded");
+  const dxfSt = document.getElementById("dxfStatus");
+  if (dxfSt) dxfSt.innerHTML = "Ketuk untuk memilih file pola <strong>.DXF</strong>";
+
+  const xlZone = document.getElementById("excelZone");
+  if (xlZone) xlZone.classList.remove("loaded");
+  const xlSt = document.getElementById("excelStatus");
+  if (xlSt) xlSt.innerHTML = "Ketuk untuk unggah BOM <strong>.CSV / .XLSX</strong> (Opsional)";
+
+  const mapList = document.getElementById("pieceMappingList");
+  if (mapList) mapList.innerHTML = "";
+  const dynProc = document.getElementById("dynamicProcessColors");
+  if (dynProc) dynProc.innerHTML = "";
+  const mCont = document.getElementById("markerContainer");
+  if (mCont) mCont.innerHTML = "";
+  const resArea = document.getElementById("resultArea");
+  if (resArea) resArea.classList.add("hidden");
+  const syncLog = document.getElementById("autoSyncLog");
+  if (syncLog) syncLog.innerHTML = "";
+};
