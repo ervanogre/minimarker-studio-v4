@@ -3125,3 +3125,253 @@ if (typeof openFullPreview === "function" && !window._wrappedFsClickEdit) {
     });
   };
 }
+
+function escXml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function buildEditableCorelSvgPages() {
+  const prevOpenFull = window.openFullPreview;
+  window.openFullPreview = function() {};
+  try { if (typeof generateMiniMarker === "function") generateMiniMarker(); } finally { window.openFullPreview = prevOpenFull; }
+
+  const CW = 1754, CH = 1240;
+  const styleVal = (document.getElementById('styleNoInput')?.value || currentStyleName || 'STYLE').trim().toUpperCase();
+  const orderVal = (document.getElementById('orderNoInput')?.value || '').trim().toUpperCase();
+  const fontFam = (document.getElementById('fontFamilySelect')?.value || 'Times New Roman, serif').replace(/"/g, "'");
+  const titleSize = parseInt(document.getElementById('titleFontSize')?.value) || 38;
+  const labelSize = parseInt(document.getElementById('labelFontSize')?.value) || 14;
+  const procSize = parseInt(document.getElementById('processFontSize')?.value) || 13;
+  const fabSize = parseInt(document.getElementById('fabricFontSize')?.value) || 14;
+  const customCols = document.getElementById('colsSelect')?.value || 'auto';
+  const customRows = document.getElementById('rowsSelect')?.value || 'auto';
+  const cwKey = document.getElementById('colorwaySelect')?.value;
+  const bom = excelColorways[cwKey];
+
+  if ((typeof isAutoSyncMode !== 'undefined' && isAutoSyncMode) && window._menu1MasterOrderMap && Object.keys(window._menu1MasterOrderMap).length > 0) {
+    parsedPieces.forEach(p => {
+      const altKey = String(p.rawText || '').trim().toUpperCase() + '_' + String(p.fabric || '');
+      const m = window._menu1MasterOrderMap[p.id] || window._menu1MasterOrderMap[altKey];
+      if (m) { p.bomOrder = m.order; p.fabric = m.fabric; p.name = m.name; p.sizeText = m.sizeText; p.qtyLabel = m.qtyLabel; p.processLabel = m.processLabel; p.autoRotate90 = m.autoRotate90; }
+    });
+  }
+  const bomFabSeq = [];
+  if (bom && Array.isArray(bom.pieces)) bom.pieces.forEach(bp => { if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric); });
+  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'L2', 'N1'])].filter(f => parsedPieces.some(p => p.fabric === f));
+  const fabricNumberMap = {}; activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
+  const sortedPieces = [...parsedPieces].sort((a, b) => {
+    const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
+    if (fDiff !== 0) return fDiff;
+    const oA = typeof a.bomOrder === 'number' ? a.bomOrder : 9999, oB = typeof b.bomOrder === 'number' ? b.bomOrder : 9999;
+    return oA !== oB ? oA - oB : (a.id || 0) - (b.id || 0);
+  });
+  const subCounters = {};
+  sortedPieces.forEach(p => { const fn = fabricNumberMap[p.fabric] || 1; subCounters[fn] = (subCounters[fn] || 0) + 1; p.itemNumberLabel = fn + '.' + subCounters[fn]; });
+  const sampleBoxW = CW - 72, sampleFooterH = 42 + (activeFabrics.length * Math.max(labelSize + 11, 24)), sampleBoxH = CH - 76 - sampleFooterH - 22;
+  const dynLayout = computeDynamicGridLayout(sortedPieces, customCols, customRows, sampleBoxW, sampleBoxH, labelSize);
+  const cols = dynLayout.cols, rowsPerPage = dynLayout.rowsPerPage, pages = dynLayout.pages, globalUniformScale = dynLayout.globalUniformScale;
+  const tctx = document.createElement('canvas').getContext('2d');
+
+  return pages.map((pagePieces, pageIdx) => {
+    const els = [`<rect x="0" y="0" width="${CW}" height="${CH}" fill="#ffffff"/>`];
+    const fullTitleText = (styleVal + ' (' + currentColorwayName + ')').replace(/\s+/g, ' ').trim();
+    let effTitleSize = titleSize; tctx.font = 'bold ' + effTitleSize + 'px ' + fontFam;
+    while (effTitleSize > 16 && tctx.measureText(fullTitleText).width > (CW - 80)) { effTitleSize -= 1; tctx.font = 'bold ' + effTitleSize + 'px ' + fontFam; }
+    const titleLineH = Math.round(effTitleSize * 1.15);
+    els.push(`<text x="${CW / 2}" y="${16 + titleLineH}" font-family="${escXml(fontFam)}" font-size="${effTitleSize}" font-weight="bold" fill="#000000" text-anchor="middle">${escXml(fullTitleText)}</text>`);
+    const bomSpecs = (bom && bom.fabricSpecs) || {}, fabLineH = Math.max(Math.round(fabSize * 1.32), 20), fabHeaderSize = fabSize + 2;
+    tctx.font = fabSize + 'px ' + fontFam;
+    const footerEntries = activeFabrics.map(fab => {
+      const num = fabricNumberMap[fab], cnt = sortedPieces.filter(p => p.fabric === fab).length;
+      const specText = (bomSpecs[fab] || fab).replace(/\bWIDTH\s*VAI\b|\bWIDTH\b|\bVAI\b/gi, '').replace(/\s+/g, ' ').trim();
+      return wrapCanvasLines(tctx, num + '. ' + specText + ' (' + cnt + ' KOMPONEN)', CW - 80);
+    });
+    const footerH = Math.round(fabHeaderSize * 1.5) + (footerEntries.reduce((a, b) => a + Math.max(b.length, 1), 0) * fabLineH) + 14;
+    const boxX = 36, boxY = 20 + titleLineH + ((orderVal || pages.length > 1) ? Math.max(labelSize + 14, 24) : 10);
+    const boxW = CW - 72, boxH = Math.max(220, CH - boxY - footerH - 18);
+    if (orderVal) els.push(`<text x="${boxX}" y="${boxY - 8}" font-family="${escXml(fontFam)}" font-size="${labelSize + 3}" font-weight="bold" fill="#000000">${escXml(orderVal)}</text>`);
+    if (pages.length > 1) els.push(`<text x="${boxX + boxW}" y="${boxY - 8}" font-family="${escXml(fontFam)}" font-size="${labelSize + 3}" font-weight="bold" fill="#000000" text-anchor="end">HAL ${pageIdx + 1}/${pages.length}</text>`);
+    els.push(`<rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="none" stroke="#000000" stroke-width="2.5"/>`);
+    const baseCellW = (boxW - 24) / cols, baseCellH = (boxH - 18) / rowsPerPage;
+    pagePieces.forEach(slot => {
+      const piece = slot.piece || slot, col = slot.col || 0, row = slot.row || 0, cSpan = slot.colSpan || 1, rSpan = slot.rowSpan || 1;
+      const cellW = baseCellW * cSpan, cellH = baseCellH * rSpan, cx = boxX + 12 + col * baseCellW, cy = boxY + 10 + row * baseCellH;
+      const fabNum = piece.itemNumberLabel || String(fabricNumberMap[piece.fabric] || 1), circleR = Math.min(14, baseCellH * 0.075);
+      const topSpace = piece.processLabel ? (Math.max(procSize, 10) + 10) : 8, bottomSpace = Math.round(labelSize * 3.0) + 16;
+      const leftOffset = (circleR * 2) + 8, rightSpace = piece.qtyLabel ? 34 : 10;
+      const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
+      const ew = piece.autoRotate90 ? piece.height : piece.width, eh = piece.autoRotate90 ? piece.width : piece.height;
+      const pairScale = (cSpan > 1 || rSpan > 1) ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const finalW = ew * pairScale, finalH = eh * pairScale, finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
+      const numCx = Math.max(cx + circleR + 3, finalX - circleR - 5), numCy = Math.max(cy + circleR + 6, finalY + circleR);
+      const numFontSz = Math.round(circleR * (String(fabNum).length >= 4 ? 0.76 : 0.90));
+      els.push(`<g id="Piece_${escXml(fabNum)}"><circle cx="${numCx.toFixed(1)}" cy="${numCy.toFixed(1)}" r="${circleR.toFixed(1)}" fill="none" stroke="#000000" stroke-width="1.8"/><text x="${numCx.toFixed(1)}" y="${(numCy + Math.round(circleR * 0.35)).toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${numFontSz}" font-weight="bold" fill="#000000" text-anchor="middle">${escXml(fabNum)}</text>`);
+      if (piece.processLabel) {
+        const parts = piece.processLabel.toUpperCase().split('-').map(s => s.trim()).filter(Boolean), sep = ' - ';
+        const procLeftLimit = numCx + circleR + 6, procRightLimit = cx + cellW - 4, maxProcW = Math.max(procRightLimit - procLeftLimit, 36);
+        let effProcSize = Math.max(procSize, 9); tctx.font = '900 ' + effProcSize + 'px ' + fontFam;
+        let totalTextW = parts.reduce((a, pt) => a + tctx.measureText(pt).width, 0) + tctx.measureText(sep).width * Math.max(parts.length - 1, 0);
+        while (effProcSize > 7 && totalTextW > maxProcW) { effProcSize -= 0.5; tctx.font = '900 ' + effProcSize + 'px ' + fontFam; totalTextW = parts.reduce((a, pt) => a + tctx.measureText(pt).width, 0) + tctx.measureText(sep).width * Math.max(parts.length - 1, 0); }
+        let curX = Math.max(procLeftLimit, Math.min(procRightLimit - totalTextW, (finalX + finalW / 2) - (totalTextW / 2)));
+        const procY = Math.max(cy + effProcSize + 3, finalY - 5);
+        parts.forEach((pt, pIdx) => {
+          els.push(`<text x="${curX.toFixed(1)}" y="${procY.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${effProcSize}" font-weight="bold" fill="${getProcessColor(pt)}">${escXml(pt)}</text>`);
+          curX += tctx.measureText(pt).width;
+          if (pIdx < parts.length - 1) { els.push(`<text x="${curX.toFixed(1)}" y="${procY.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${effProcSize}" font-weight="bold" fill="#64748b">${escXml(sep)}</text>`); curX += tctx.measureText(sep).width; }
+        });
+      }
+      (piece.polygons || []).forEach(poly => {
+        const pts = poly.pts || []; if (pts.length < 2) return;
+        const ptsStr = pts.map(pt => `${(finalX + (piece.autoRotate90 ? (piece.height - pt.y) : pt.x) * pairScale).toFixed(2)},${(finalY + (piece.autoRotate90 ? pt.x : pt.y) * pairScale).toFixed(2)}`).join(' ');
+        els.push(`<${poly.isOuter ? 'polygon' : 'polyline'} points="${ptsStr}" fill="none" stroke="${poly.isOuter ? '#000000' : '#64748b'}" stroke-width="${poly.isOuter ? '2.1' : '0.9'}"/>`);
+      });
+      if (piece.qtyLabel) {
+        const qSz = Math.max(labelSize - 2, 10), labelX = finalX + finalW + 5, labelY = Math.max(cy + 16, finalY + 11);
+        if (piece.qtyLabel === 'Ax2 Bx2') { els.push(`<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${qSz}" font-weight="bold" fill="#000000">Ax2</text><text x="${labelX.toFixed(1)}" y="${(labelY + Math.max(labelSize, 12)).toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${qSz}" font-weight="bold" fill="#000000">Bx2</text>`); }
+        else els.push(`<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${qSz}" font-weight="bold" fill="#000000">${escXml(piece.qtyLabel)}</text>`);
+      }
+      const circleBottom = numCy + circleR, circleRight = numCx + circleR;
+      let py = Math.max(finalY + finalH + labelSize + 4, circleBottom + labelSize + 4);
+      const safeLeftX = (py - labelSize < circleBottom + 4) ? (circleRight + 6) : (cx + 5);
+      const maxCellW = Math.max((cx + cellW - 5) - safeLeftX, 42), safeTextX = Math.max(safeLeftX + 18, (safeLeftX + cx + cellW - 5) / 2);
+      tctx.font = 'bold ' + labelSize + 'px ' + fontFam;
+      wrapCanvasLines(tctx, String(piece.sizeText || ''), maxCellW).slice(0, 1).forEach(l => { els.push(`<text x="${safeTextX.toFixed(1)}" y="${py.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${labelSize}" font-weight="bold" fill="#000000" text-anchor="middle">${escXml(l)}</text>`); py += Math.round(labelSize * 1.15); });
+      const nf = Math.max(labelSize - 2, 8); tctx.font = nf + 'px ' + fontFam;
+      wrapCanvasLines(tctx, String(piece.name || ''), maxCellW).slice(0, 2).forEach(l => { els.push(`<text x="${safeTextX.toFixed(1)}" y="${py.toFixed(1)}" font-family="${escXml(fontFam)}" font-size="${nf}" fill="#000000" text-anchor="middle">${escXml(l)}</text>`); py += Math.round(nf * 1.15); });
+      els.push(`</g>`);
+    });
+    let fy = boxY + boxH + Math.round(fabHeaderSize * 1.2) + 4;
+    els.push(`<text x="${boxX}" y="${fy}" font-family="${escXml(fontFam)}" font-size="${fabHeaderSize}" font-weight="bold" fill="#000000">KETERANGAN :</text>`); fy += fabLineH;
+    footerEntries.forEach(lines => lines.forEach(l => { if (fy <= CH - 8) { els.push(`<text x="${boxX}" y="${fy}" font-family="${escXml(fontFam)}" font-size="${fabSize}" fill="#000000">${escXml(l)}</text>`); fy += fabLineH; } }));
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://w3.org" width="297mm" height="210mm" viewBox="0 0 ${CW} ${CH}">\n${els.join('\n')}\n</svg>`;
+  });
+}
+
+window.exportCorelSvg = async function() {
+  if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) { alert("Belum ada pola yang dimuat!"); return; }
+  const svgPages = buildEditableCorelSvgPages();
+  const safeCw = String(currentColorwayName || 'DEFAULT').replace(/[^A-Z0-9_\-]/gi, '_');
+  if (svgPages.length === 1) {
+    const fileName = 'MiniMarker_' + currentStyleName + '_' + safeCw + '_CorelDraw.svg';
+    const blob = new Blob([svgPages.at(0)], { type: 'image/svg+xml;charset=utf-8' });
+    if (typeof registerDownloadedFile === 'function') registerDownloadedFile(fileName, 'Download/MiniMarker/' + fileName, blob);
+    const saved = await saveFileUniversal(fileName, blob, false);
+    if (saved) alert("✅ File Vektor CorelDRAW (.SVG) disimpan ke: " + saved + "\n\nBuka di CorelDRAW (pilih Editable Text) lalu Save As .CDR!");
+  } else {
+    const zip = new JSZip();
+    svgPages.forEach((s, i) => zip.file('MiniMarker_' + currentStyleName + '_' + safeCw + '_Hal' + (i + 1) + '.svg', s));
+    const zipName = 'MiniMarker_' + currentStyleName + '_' + safeCw + '_CorelDraw_SVG.zip';
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipDataUrl = 'data:application/zip;base64,' + (await zip.generateAsync({ type: 'base64' }));
+    if (typeof registerDownloadedFile === 'function') registerDownloadedFile(zipName, 'Download/MiniMarker/' + zipName, zipBlob);
+    await saveFileUniversal(zipName, zipDataUrl, true);
+    alert("✅ Arsip Vektor CorelDRAW (" + svgPages.length + " halaman .SVG) siap dibuka di CorelDRAW & Save As .CDR!");
+  }
+};
+
+window.openExportFormatModal = function() {
+  let modal = document.getElementById("exportFormatModal");
+  if (!modal) {
+    modal = document.createElement("div"); modal.id = "exportFormatModal";
+    modal.style.cssText = "position:fixed; inset:0; z-index:999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:16px;";
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `<div style="width:100%;max-width:370px;background:#141226;border:1.5px solid var(--neon-cyan);border-radius:14px;padding:18px;text-align:center;"><div style="font-size:15px;font-weight:900;color:var(--neon-cyan);margin-bottom:6px;">💾 SAVE SEMUA COLORWAY (ZIP)</div><div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Pilih format vektor / gambar di dalam ZIP:</div><div style="display:flex;flex-direction:column;gap:9px;"><button type="button" class="btn" style="margin:0;padding:12px;font-size:13px;" onclick="document.getElementById('exportFormatModal').style.display='none';saveAllColorwaysBatch('pdf');">📄 VECTOR PDF - FOXIT (.ZIP)</button><button type="button" class="btn btn-secondary" style="margin:0;padding:12px;font-size:13px;" onclick="document.getElementById('exportFormatModal').style.display='none';saveAllColorwaysBatch('svg');">✒️ VECTOR SVG - CORELDRAW (.ZIP)</button><button type="button" class="btn btn-pink" style="margin:0;padding:12px;font-size:13px;" onclick="document.getElementById('exportFormatModal').style.display='none';saveAllColorwaysBatch('png');">🖼️ GAMBAR PNG (.ZIP)</button><button type="button" style="margin:0;padding:9px;font-size:12px;background:transparent;color:var(--muted);border:1px solid #312e59;border-radius:8px;" onclick="document.getElementById('exportFormatModal').style.display='none';">BATAL</button></div></div>`;
+  modal.style.display = "flex";
+};
+
+const _origSaveBatchCorel = window.saveAllColorwaysBatch;
+window.saveAllColorwaysBatch = async function(format) {
+  if (format !== 'svg') return _origSaveBatchCorel.apply(this, arguments);
+  if (typeof parsedPieces === 'undefined' || parsedPieces.length === 0) { alert("Belum ada pola DXF yang dimuat."); return; }
+  const orderNo = (document.getElementById('orderNoInput')?.value || currentStyleName || 'ORDER_MARKER').trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '_');
+  const cwKeys = Object.keys(excelColorways || {}).filter(k => excelColorways[k].pieces && excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+  const targetKeys = cwKeys.length > 0 ? cwKeys : [currentColorwayName || 'DEFAULT'];
+  const zip = new JSZip(), folder = zip.folder(orderNo);
+  for (let idx = 0; idx < targetKeys.length; idx++) {
+    const cwKey = targetKeys[idx];
+    if (typeof appendSyncLog === 'function') appendSyncLog(`⏳ Membuat Vector SVG CorelDRAW (${idx + 1}/${targetKeys.length}): ${cwKey}...`);
+    if (cwKeys.length > 0 && document.getElementById('colorwaySelect')) { document.getElementById('colorwaySelect').value = cwKey; if (typeof applyColorwayMapping === 'function') applyColorwayMapping(); }
+    const safeCw = String(currentColorwayName || cwKey).replace(/[^A-Z0-9_\-]/gi, '_');
+    const svgPages = buildEditableCorelSvgPages();
+    svgPages.forEach((s, i) => folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + (svgPages.length > 1 ? '_Hal' + (i + 1) : '') + '.svg', s));
+    await new Promise(r => setTimeout(r, 15));
+  }
+  const zipFileName = orderNo + '_CORELDRAW_SVG.zip';
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const zipDataUrl = 'data:application/zip;base64,' + (await zip.generateAsync({ type: 'base64' }));
+  if (typeof registerDownloadedFile === 'function') registerDownloadedFile(zipFileName, 'Download/MiniMarker/' + zipFileName, zipBlob);
+  await saveFileUniversal(zipFileName, zipDataUrl, true);
+  if (typeof appendSyncLog === 'function') appendSyncLog(`✅ Selesai! ${zipFileName} siap dibuka di CorelDRAW & Save As .CDR.`);
+  alert("✅ Selesai! Arsip " + zipFileName + " siap dibuka di CorelDRAW & Save As .CDR!");
+};
+
+(function injectCorelBtn() {
+  const pdfBtn = document.querySelector('#resultArea button[onclick*="exportAllPDF"]');
+  if (pdfBtn && !document.getElementById('btnExportCorelSvg')) {
+    const btn = document.createElement('button');
+    btn.id = 'btnExportCorelSvg'; btn.type = 'button'; btn.className = 'btn btn-secondary';
+    btn.style.cssText = 'margin-top:8px; margin-bottom:4px;';
+    btn.innerHTML = '✒️ EXPORT SVG (CORELDRAW / SAVE .CDR)';
+    btn.onclick = window.exportCorelSvg;
+    pdfBtn.parentNode.insertBefore(btn, pdfBtn.nextSibling);
+  }
+})();
+
+function resetWorkspace() {
+  if (!confirm("Bersihkan seluruh lembar kerja (DXF, BOM, Planning Spread, dan Preview)?")) return;
+  if (typeof parsedPieces !== 'undefined') parsedPieces = [];
+  if (typeof excelColorways !== 'undefined') excelColorways = {};
+  if (typeof bomTemplates !== 'undefined') bomTemplates = {};
+  if (typeof generatedCanvases !== 'undefined') {
+    generatedCanvases.forEach(c => { c.width = 1; c.height = 1; });
+    generatedCanvases = [];
+  }
+  currentStyleName = 'MINI_MARKER';
+  currentColorwayName = 'DEFAULT';
+
+  ['dxfInput', 'excelInput', 'spreadInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ['styleNoInput', 'orderNoInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  const dxfZone = document.getElementById('dxfZone');
+  if (dxfZone) dxfZone.classList.remove('loaded');
+  const dxfStatus = document.getElementById('dxfStatus');
+  if (dxfStatus) dxfStatus.innerHTML = '📐 Ketuk untuk Unggah File Pola (.DXF)';
+
+  const excelZone = document.getElementById('excelZone');
+  if (excelZone) excelZone.classList.remove('loaded');
+  const excelStatus = document.getElementById('excelStatus');
+  if (excelStatus) excelStatus.innerHTML = '📊 Ketuk untuk Unggah BOM Excel (.XLSX/.CSV)';
+
+  const spreadZone = document.getElementById('spreadZone');
+  if (spreadZone) spreadZone.classList.remove('loaded');
+  const spreadStatus = document.getElementById('spreadStatus');
+  if (spreadStatus) spreadStatus.innerHTML = '📋 Ketuk untuk Unggah File PLANNING SPREAD (.CSV/.XLSX)';
+
+  const cwBox = document.getElementById('colorwayBox');
+  if (cwBox) cwBox.classList.add('hidden');
+  const cwSel = document.getElementById('colorwaySelect');
+  if (cwSel) cwSel.innerHTML = '';
+
+  const resArea = document.getElementById('resultArea');
+  if (resArea) resArea.classList.add('hidden');
+  const markerCont = document.getElementById('markerContainer');
+  if (markerCont) markerCont.innerHTML = '';
+
+  const syncLog = document.getElementById('autoSyncLog');
+  if (syncLog) { syncLog.innerHTML = ''; syncLog.classList.add('hidden'); }
+
+  const mapList = document.getElementById('pieceMappingList');
+  if (mapList) mapList.innerHTML = '<div class="card-sub">Belum ada file DXF yang dimuat.</div>';
+
+  const dynProc = document.getElementById('dynamicProcessColors');
+  if (dynProc) dynProc.innerHTML = '<div class="card-sub">Klik "Buat Mini Marker" terlebih dahulu untuk memunculkan proses.</div>';
+
+  window.scrollTo(0, 0);
+}
