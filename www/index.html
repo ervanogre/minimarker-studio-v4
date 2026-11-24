@@ -8,6 +8,10 @@
   <script src="libs/xlsx.full.min.js"></script>
   <script src="libs/jspdf.umd.min.js"></script>
   <script src="libs/jszip.min.js"></script>
+  <link rel="preconnect" href="https://googleapis.com">
+  <link rel="preconnect" href="https://googleapis.com">
+  <link rel="preconnect" href="https://googleapis.com">
+  <link rel="stylesheet" href="https://googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <style>
     :root {
       --bg: #07060e;
@@ -128,36 +132,691 @@
     }
     .graffiti-title { animation: neonPulse 3.2s ease-in-out infinite; }
     #homeSplashScreen { position: relative; overflow: hidden; }
-    #screensaverCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+    #screensaverCanvas { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; opacity:0.65; }
     #homeSplashScreen > *:not(canvas) { position: relative; z-index: 1; }
+  
+    
+    
+    /* Efek Listrik Saat Semua Tombol Ditekan */
+    @keyframes electricShock {
+      0% {
+        box-shadow: 0 0 4px #ffffff, 0 0 14px #00f5d4, 0 0 28px #38bdf8, inset 0 0 12px rgba(255, 255, 255, 0.9);
+        filter: brightness(1.45) contrast(1.2);
+        transform: translate(0, 0) scale(0.97);
+      }
+      22% {
+        box-shadow: 0 0 10px #ffffff, 0 0 26px #00f5d4, 0 0 42px #818cf8;
+        transform: translate(-1.5px, 1px) scale(0.98);
+      }
+      45% {
+        box-shadow: 0 0 6px #e0f2fe, 0 0 18px #38bdf8, 0 0 34px #00f5d4;
+        transform: translate(1.5px, -1px) scale(0.97);
+      }
+      70% {
+        box-shadow: 0 0 12px #ffffff, 0 0 24px #00f5d4, 0 0 36px #ff007f;
+        transform: translate(-1px, 0) scale(0.99);
+      }
+      100% {
+        box-shadow: none;
+        filter: brightness(1);
+        transform: translate(0, 0) scale(1);
+      }
+    }
+    button.electric-zap, .btn.electric-zap, .tab-btn.electric-zap {
+      animation: electricShock 0.3s cubic-bezier(0.22, 1, 0.36, 1) !important;
+      border-color: #ffffff !important;
+    }
+    .electric-bolt-fx {
+      position: fixed;
+      pointer-events: none;
+      z-index: 99999;
+      filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 10px #00f5d4) drop-shadow(0 0 18px #38bdf8);
+      animation: boltFade 0.28s ease-out forwards;
+    }
+    @keyframes boltFade {
+      0% { opacity: 1; transform: scale(0.85); }
+      40% { opacity: 1; transform: scale(1.05); }
+      100% { opacity: 0; transform: scale(1.12); }
+    }
+    #backToastNotice {
+      position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%);
+      background: rgba(17, 15, 33, 0.96); color: var(--neon-cyan);
+      border: 1.5px solid var(--neon-cyan); box-shadow: 0 0 16px rgba(0, 245, 212, 0.55);
+      padding: 8px 16px; border-radius: 999px; font-size: 12px; font-weight: 800;
+      z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
+    }
+  
+    
+    /* Desain Cyber-Industrial CAD Neon */
+    #homeSplashScreen {
+      background-image:
+        linear-gradient(rgba(0, 245, 212, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 245, 212, 0.045) 1px, transparent 1px) !important;
+      background-size: 28px 28px !important;
+    }
+    #homeSplashScreen .graffiti-badge {
+      font-family: "Orbitron", sans-serif !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      letter-spacing: 3px !important;
+      padding: 6px 16px !important;
+      background: rgba(0, 245, 212, 0.08) !important;
+      border: 1px solid rgba(0, 245, 212, 0.45) !important;
+      color: var(--neon-cyan) !important;
+      box-shadow: 0 0 15px rgba(0, 245, 212, 0.2) !important;
+    }
+    #homeSplashScreen .graffiti-title {
+      font-family: "Orbitron", "Segoe UI", sans-serif !important;
+      font-size: clamp(28px, 7.5vw, 44px) !important;
+      font-weight: 900 !important;
+      font-style: italic !important;
+      letter-spacing: 2px !important;
+      line-height: 1.15 !important;
+      margin: 10px 0 8px 0 !important;
+      -webkit-text-stroke: 0 !important;
+      background: linear-gradient(95deg, #ffffff 10%, #00f5d4 52%, #ff007f 95%) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      filter: drop-shadow(0 0 18px rgba(0, 245, 212, 0.45)) !important;
+    }
+    #homeSplashScreen .graffiti-creator {
+      font-family: "Rajdhani", sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      letter-spacing: 4px !important;
+      color: rgba(248, 250, 252, 0.72) !important;
+      text-shadow: 0 0 10px rgba(255, 0, 127, 0.45) !important;
+      margin-bottom: 34px !important;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(0, 245, 212, 0.25);
+    }
+    #homeSplashScreen .splash-btn-group {
+      max-width: 380px !important;
+      gap: 14px !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn {
+      font-family: "Rajdhani", "Segoe UI", sans-serif !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      text-align: left !important;
+      padding: 16px 20px !important;
+      border-radius: 16px !important;
+      transform: none !important;
+      background: linear-gradient(145deg, rgba(17, 15, 33, 0.92), rgba(26, 22, 52, 0.88)) !important;
+      backdrop-filter: blur(10px);
+      border: 1.5px solid rgba(0, 245, 212, 0.45) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(0, 245, 212, 0.08) !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn.btn-pink {
+      border-color: rgba(255, 0, 127, 0.55) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 0, 127, 0.1) !important;
+    }
+    .splash-btn-title {
+      font-family: "Orbitron", sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .splash-btn-desc {
+      font-family: "Rajdhani", sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: #a5b4fc;
+      margin-top: 4px;
+    }
+  
+    /* Efek Laser CAD Scanner Sweep */
+    @keyframes cadLaserSweep {
+      0% {
+        top: -8%;
+        opacity: 0;
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        top: 108%;
+        opacity: 0;
+      }
+    }
+    #cadLaserBeam {
+      position: absolute !important;
+      left: 0 !important;
+      right: 0 !important;
+      height: 3px !important;
+      background: linear-gradient(90deg, transparent 0%, #00f5d4 20%, #ffffff 50%, #ff007f 80%, transparent 100%) !important;
+      box-shadow:
+        0 0 10px #ffffff,
+        0 0 22px #00f5d4,
+        0 0 36px rgba(0, 245, 212, 0.85) !important;
+      pointer-events: none !important;
+      z-index: 5 !important;
+      animation: cadLaserSweep 4.2s linear infinite !important;
+    }
+    #cadLaserBeam::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 65px;
+      background: linear-gradient(to top, rgba(0, 245, 212, 0.28), transparent);
+      pointer-events: none;
+    }
+    .cad-corner {
+      position: absolute !important;
+      width: 22px !important;
+      height: 22px !important;
+      border-color: rgba(0, 245, 212, 0.65) !important;
+      border-style: solid !important;
+      pointer-events: none !important;
+      z-index: 5 !important;
+    }
+    .cad-tl { top: 14px; left: 14px; border-width: 2px 0 0 2px; }
+    .cad-tr { top: 14px; right: 14px; border-width: 2px 2px 0 0; }
+    .cad-bl { bottom: 14px; left: 14px; border-width: 0 0 2px 2px; }
+    .cad-br { bottom: 14px; right: 14px; border-width: 0 2px 2px 0; }
+  
+    /* Kartu Menu Utama Cyber-CAD (Tidak Monoton) */
+    #homeSplashScreen .splash-btn-group {
+      max-width: 390px !important;
+      gap: 16px !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      padding: 16px 18px !important;
+      border-radius: 16px !important;
+      text-align: left !important;
+      position: relative !important;
+      overflow: hidden !important;
+      transition: transform 0.15s ease, box-shadow 0.2s ease !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn:not(.btn-pink) {
+      background: linear-gradient(135deg, rgba(0, 245, 212, 0.14) 0%, rgba(17, 15, 33, 0.94) 65%) !important;
+      border: 1.5px solid rgba(0, 245, 212, 0.7) !important;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55), inset 0 0 18px rgba(0, 245, 212, 0.12) !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn.btn-pink {
+      background: linear-gradient(135deg, rgba(255, 0, 127, 0.18) 0%, rgba(17, 15, 33, 0.94) 65%) !important;
+      border: 1.5px solid rgba(255, 0, 127, 0.75) !important;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55), inset 0 0 18px rgba(255, 0, 127, 0.14) !important;
+    }
+    .menu-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .menu-card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .menu-card-tag {
+      font-family: "Orbitron", sans-serif;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+    .menu-card-title {
+      font-family: "Orbitron", "Segoe UI", sans-serif;
+      font-size: 14.5px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      color: #ffffff;
+    }
+    .menu-card-sub {
+      font-family: "Rajdhani", "Segoe UI", sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #cbd5e1;
+      line-height: 1.25;
+    }
+    .menu-card-arrow {
+      font-size: 18px;
+      font-weight: 900;
+      opacity: 0.85;
+    }
+  
+    /* === SLEEK CYBER-CAD WORKSPACE PRO === */
+    #mainAppScreen {
+      font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif !important;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    /* Header Atas Rapi & Modern */
+    #mainAppScreen > div:first-child {
+      background: rgba(13, 15, 28, 0.85);
+      backdrop-filter: blur(10px);
+      padding: 10px 14px !important;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 245, 212, 0.25) !important;
+      border-bottom: 1px solid rgba(0, 245, 212, 0.25) !important;
+      margin-bottom: 12px !important;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    }
+    #mainAppScreen > div:first-child div:first-child > div:first-child {
+      font-family: "Orbitron", sans-serif !important;
+      font-style: normal !important;
+      font-size: 14.5px !important;
+      letter-spacing: 1px !important;
+      color: #ffffff !important;
+      text-shadow: 0 0 12px rgba(0, 245, 212, 0.55) !important;
+    }
+    #mainAppScreen > div:first-child div:first-child > div:last-child {
+      font-family: "Rajdhani", sans-serif !important;
+      font-size: 11px !important;
+      letter-spacing: 2.2px !important;
+      color: var(--neon-cyan) !important;
+      opacity: 0.85;
+    }
+
+    /* Segmented Tab Bar */
+    #mainAppScreen .tabs, #mainAppScreen > div:has(> .tab-btn) {
+      background: rgba(11, 13, 24, 0.9) !important;
+      padding: 4px !important;
+      border-radius: 12px !important;
+      border: 1px solid rgba(148, 163, 184, 0.2) !important;
+      gap: 4px !important;
+      margin-bottom: 12px !important;
+    }
+    #mainAppScreen .tab-btn {
+      font-family: "Rajdhani", sans-serif !important;
+      font-style: normal !important;
+      font-size: 12.5px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.5px !important;
+      border-radius: 9px !important;
+      border: 1px solid transparent !important;
+      background: transparent !important;
+      color: #94a3b8 !important;
+      padding: 9px 6px !important;
+    }
+    #mainAppScreen .tab-btn.active {
+      background: linear-gradient(135deg, rgba(0, 245, 212, 0.18), rgba(56, 189, 248, 0.14)) !important;
+      border-color: rgba(0, 245, 212, 0.55) !important;
+      color: #ffffff !important;
+      box-shadow: 0 2px 10px rgba(0, 245, 212, 0.2) !important;
+    }
+
+    /* Kartu Panel Bersih (Dark Glass) */
+    #mainAppScreen .card {
+      background: rgba(15, 17, 31, 0.88) !important;
+      border: 1px solid rgba(148, 163, 184, 0.18) !important;
+      border-radius: 16px !important;
+      padding: 14px !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+    }
+    #mainAppScreen .card-title {
+      font-family: "Orbitron", sans-serif !important;
+      font-style: normal !important;
+      font-size: 12.5px !important;
+      font-weight: 800 !important;
+      letter-spacing: 1px !important;
+      color: var(--neon-cyan) !important;
+      margin-bottom: 10px !important;
+    }
+    #mainAppScreen .card-sub {
+      font-family: "Rajdhani", sans-serif !important;
+      font-style: normal !important;
+      font-size: 13px !important;
+      color: #cbd5e1 !important;
+      line-height: 1.35 !important;
+    }
+
+    /* Dropzone Unggah File Lebih Rapi (Tanpa Dashed Berlebihan) */
+    #mainAppScreen .dropzone {
+      border: 1px solid rgba(0, 245, 212, 0.35) !important;
+      border-left: 4px solid var(--neon-cyan) !important;
+      background: rgba(22, 26, 46, 0.75) !important;
+      border-radius: 12px !important;
+      padding: 13px 14px !important;
+      transition: all 0.2s ease !important;
+    }
+    #mainAppScreen .dropzone.loaded {
+      border-color: rgba(0, 245, 212, 0.75) !important;
+      background: rgba(0, 245, 212, 0.1) !important;
+    }
+    #mainAppScreen #dxfStatus, #mainAppScreen #excelStatus, #mainAppScreen #spreadStatus {
+      font-family: "Rajdhani", sans-serif !important;
+      font-style: normal !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.3px !important;
+    }
+
+    /* Input, Select & Tombol +/- Presisi */
+    #mainAppScreen label {
+      font-family: "Rajdhani", sans-serif !important;
+      font-size: 11.5px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.8px !important;
+      color: #94a3b8 !important;
+    }
+    #mainAppScreen input, #mainAppScreen select {
+      font-family: "Rajdhani", sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      background: rgba(9, 11, 20, 0.9) !important;
+      border: 1px solid rgba(148, 163, 184, 0.28) !important;
+      border-radius: 10px !important;
+      color: #f8fafc !important;
+      padding: 8px 10px !important;
+    }
+    #mainAppScreen button[onclick*="stepFontVal"],
+    #mainAppScreen button[onclick*="stepSelectVal"] {
+      background: rgba(22, 26, 46, 0.95) !important;
+      border: 1px solid rgba(0, 245, 212, 0.4) !important;
+      color: var(--neon-cyan) !important;
+      border-radius: 9px !important;
+      min-width: 34px;
+      font-size: 15px !important;
+    }
+
+    /* Tombol Aksi & Floating Bar Modern */
+    #mainAppScreen .btn {
+      font-family: "Orbitron", sans-serif !important;
+      font-style: normal !important;
+      font-size: 12px !important;
+      font-weight: 800 !important;
+      letter-spacing: 0.8px !important;
+      border-radius: 12px !important;
+      padding: 12px 14px !important;
+    }
+    #floatingActionBar {
+      background: rgba(10, 12, 24, 0.95) !important;
+      backdrop-filter: blur(12px) !important;
+      border-top: 1px solid rgba(0, 245, 212, 0.3) !important;
+      padding: 10px 12px !important;
+      box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65) !important;
+    }
+    #floatingActionBar .btn:first-child {
+      background: rgba(30, 34, 58, 0.95) !important;
+      border: 1px solid rgba(254, 228, 64, 0.55) !important;
+      color: var(--neon-yellow) !important;
+    }
+    #floatingActionBar .btn:last-child {
+      background: linear-gradient(135deg, #00f5d4 0%, #00bbf9 100%) !important;
+      color: #050711 !important;
+      border: none !important;
+      box-shadow: 0 0 18px rgba(0, 245, 212, 0.4) !important;
+    }
+  
+    /* === ULTRA-CLEAN MINIMALIST DARK UI === */
+    body, button, input, select, div, span, h1, h2, h3, label {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+      font-style: normal !important;
+    }
+    body {
+      background-color: #0b0d14 !important;
+      background-image: none !important;
+      color: #f1f5f9 !important;
+    }
+
+    /* Layar Awal Simpel & Bersih */
+    #homeSplashScreen {
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) !important;
+      background-size: 32px 32px !important;
+    }
+    #homeSplashScreen .graffiti-badge {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      letter-spacing: 1.5px !important;
+      background: rgba(0, 245, 212, 0.08) !important;
+      border: 1px solid rgba(0, 245, 212, 0.25) !important;
+      color: #5eead4 !important;
+      box-shadow: none !important;
+    }
+    #homeSplashScreen .graffiti-title {
+      font-size: clamp(26px, 7vw, 36px) !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.5px !important;
+      transform: none !important;
+      animation: none !important;
+      background: linear-gradient(180deg, #ffffff 30%, #94a3b8 100%) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      filter: none !important;
+      margin: 8px 0 6px 0 !important;
+    }
+    #homeSplashScreen .graffiti-creator {
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      letter-spacing: 2px !important;
+      color: #64748b !important;
+      text-shadow: none !important;
+      border-bottom: none !important;
+      margin-bottom: 32px !important;
+    }
+    #homeSplashScreen .splash-btn-group .btn {
+      background: #131622 !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+      border-radius: 14px !important;
+      padding: 15px 16px !important;
+    }
+    .menu-card-tag {
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      letter-spacing: 1px !important;
+    }
+    .menu-card-title {
+      font-size: 15px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0 !important;
+      color: #f8fafc !important;
+    }
+    .menu-card-sub {
+      font-size: 12px !important;
+      font-weight: 400 !important;
+      color: #94a3b8 !important;
+    }
+
+    /* Ruang Kerja Utama Simpel */
+    #mainAppScreen > div:first-child {
+      background: #131622 !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: none !important;
+    }
+    #mainAppScreen > div:first-child div:first-child > div:first-child {
+      font-size: 15px !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.2px !important;
+      color: #f8fafc !important;
+      text-shadow: none !important;
+    }
+    #mainAppScreen > div:first-child div:first-child > div:last-child {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      letter-spacing: 1px !important;
+      color: #64748b !important;
+    }
+    #mainAppScreen .tabs, #mainAppScreen > div:has(> .tab-btn) {
+      background: #131622 !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    #mainAppScreen .tab-btn {
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0 !important;
+      color: #94a3b8 !important;
+    }
+    #mainAppScreen .tab-btn.active {
+      background: #1e2336 !important;
+      border-color: rgba(0, 245, 212, 0.4) !important;
+      color: #ffffff !important;
+      box-shadow: none !important;
+    }
+    #mainAppScreen .card {
+      background: #131622 !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: none !important;
+    }
+    #mainAppScreen .card-title {
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.2px !important;
+      color: #e2e8f0 !important;
+    }
+    #mainAppScreen .card-sub {
+      font-size: 12.5px !important;
+      font-weight: 400 !important;
+      color: #94a3b8 !important;
+    }
+    #mainAppScreen .dropzone {
+      background: #0d0f18 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-left: 3px solid #00f5d4 !important;
+    }
+    #mainAppScreen label {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.3px !important;
+      color: #94a3b8 !important;
+    }
+    #mainAppScreen input, #mainAppScreen select {
+      background: #0d0f18 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      font-size: 13.5px !important;
+      font-weight: 500 !important;
+    }
+    #mainAppScreen button[onclick*="stepFontVal"],
+    #mainAppScreen button[onclick*="stepSelectVal"] {
+      background: #1a1e2e !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #e2e8f0 !important;
+    }
+    #mainAppScreen .btn {
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.2px !important;
+    }
+    #floatingActionBar {
+      background: rgba(11, 13, 20, 0.96) !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+      box-shadow: none !important;
+    }
+    #floatingActionBar .btn:first-child {
+      background: #1a1e2e !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #f8fafc !important;
+    }
+    #floatingActionBar .btn:last-child {
+      background: #00f5d4 !important;
+      color: #07090f !important;
+      font-weight: 700 !important;
+      box-shadow: none !important;
+    }
+  
+    /* === PENYERAGAMAN SEMUA TOMBOL (BEBAS GAYA NEON LAMA) === */
+    button, .btn, .btn-pink, .btn-secondary {
+      background: #1a1f30 !important;
+      background-image: none !important;
+      color: #f1f5f9 !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28) !important;
+      text-shadow: none !important;
+      border-radius: 10px !important;
+      font-weight: 600 !important;
+    }
+    /* Tombol Aksi Utama (Buat Mini Marker & Terapkan) */
+    #floatingActionBar .btn:last-child,
+    button[onclick="generateMiniMarker()"],
+    button[onclick="runAutoSyncNow()"] {
+      background: #0d9488 !important;
+      color: #ffffff !important;
+      border-color: #14b8a6 !important;
+      font-weight: 700 !important;
+    }
+    /* Kartu Menu Layar Awal */
+    #homeSplashScreen .splash-btn-group .btn {
+      background: #141826 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    }
+    /* Tombol +/- Stepper Kecil */
+    button[onclick*="stepFontVal"],
+    button[onclick*="stepSelectVal"] {
+      background: #131724 !important;
+      color: #cbd5e1 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    }
+    /* Tombol Home */
+    button[onclick="backToSplash()"] {
+      background: #1a1f30 !important;
+      color: #e2e8f0 !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    }
+    #mainAppScreen > *:not(canvas) { position: relative; z-index: 1; }
   </style>
 <style>.autosync-active #btnGoToMenu2 { display: none !important; }</style>
 </head>
 <body>
   <!-- LAYAR AWAL (SPLASH SCREEN) -->
   <div id="homeSplashScreen" class="splash-wrap">
+    <div id="cadLaserBeam"></div>
+    <div class="cad-corner cad-tl"></div>
+    <div class="cad-corner cad-tr"></div>
+    <div class="cad-corner cad-bl"></div>
+    <div class="cad-corner cad-br"></div>
     <canvas id="screensaverCanvas"></canvas>
-    <div class="graffiti-badge">⚡ STREET CAD EDITION ⚡</div>
+    <div class="graffiti-badge">CAD MARKER SYSTEM</div>
     <h1 class="graffiti-title">MINIMARKER STUDIO V4</h1>
     <div class="graffiti-creator">CREATED BY ERVAN ALVIAN</div>
     <div class="splash-btn-group">
-      <button type="button" class="btn" onclick="openToolMode('manual')">🎨 1. BUAT MINIMARKER</button>
-      <button type="button" class="btn btn-pink" onclick="openToolMode('autosync')">⚡ 2. MINIMARKER AUTO SYNC</button>
+      <button type="button" class="btn" onclick="openToolMode('manual')">
+        <div class="menu-card-icon" style="background:rgba(0,245,212,0.16); border:1px solid rgba(0,245,212,0.5); box-shadow:0 0 12px rgba(0,245,212,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f5d4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+        <div class="menu-card-body">
+          <span class="menu-card-tag" style="color:var(--neon-cyan);">SINGLE / MANUAL MODE</span>
+          <span class="menu-card-title">BUAT MINIMARKER</span>
+          <span class="menu-card-sub">Proses pola DXF &amp; JACJI per color dengan kontrol penuh</span>
+        </div>
+        <span class="menu-card-arrow" style="color:var(--neon-cyan);">➔</span>
+      </button>
+      <button type="button" class="btn btn-pink" onclick="openToolMode('autosync')">
+        <div class="menu-card-icon" style="background:rgba(255,0,127,0.18); border:1px solid rgba(255,0,127,0.55); box-shadow:0 0 12px rgba(255,0,127,0.35);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff007f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <div class="menu-card-body">
+          <span class="menu-card-tag" style="color:var(--neon-yellow);">BATCH ENGINE • F/A</span>
+          <span class="menu-card-title">MINIMARKER AUTO SYNC</span>
+          <span class="menu-card-sub">Sinkronisasi otomatis semua color via Planning Spread</span>
+        </div>
+        <span class="menu-card-arrow" style="color:var(--neon-pink);">➔</span>
+      </button>
     </div>
   </div>
   <!-- WORKSPACE UTAMA -->
-  <div id="mainAppScreen" class="hidden" style="padding-bottom:76px;">
+  <div id="mainAppScreen" class="hidden" style="padding-bottom:76px; position:relative;">
+    <canvas id="workspaceBgCanvas" style="position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; opacity:0.35;"></canvas>
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1.5px solid rgba(255,0,127,0.4);">
       <div>
         <div style="font-size:16px; font-weight:900; font-style:italic; color:var(--neon-cyan); text-shadow:0 0 8px rgba(0,245,212,0.5);">MINIMARKER STUDIO V4</div>
         <div style="font-size:10px; font-weight:700; color:var(--neon-pink); letter-spacing:1px;">BY ERVAN ALVIAN</div>
       </div>
-      <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;">🏠 HOME</button>
+      <button type="button" onclick="backToSplash()" style="background:rgba(254,228,64,0.12); color:var(--neon-yellow); border:1.5px solid var(--neon-yellow); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:900; cursor:pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>HOME</button>
     </div>
 
     <div id="autoSyncBanner" class="card hidden" style="border-color:var(--neon-pink); background:rgba(255,0,127,0.12); box-shadow:0 0 20px rgba(255,0,127,0.3);">
       <div class="card-title" style="color:var(--neon-pink);">⚡ MINIMARKER AUTO SYNC ENGINE</div>
-      <div class="card-sub" style="color:#f8fafc; margin-bottom:10px;">1. Unggah DXF &amp; Excel BOM di bawah.<br>2. Unggah file <strong>Planning Spread (Final Fabric)</strong> di kotak khusus ini agar semua Colorway disinkronkan via <strong>F/A</strong>:</div>
+      <div class="card-sub" style="color:#f8fafc; margin-bottom:10px;">1. Unggah DXF &amp; Excel JACJI di bawah.<br>2. Unggah file <strong>Planning Spread (Final Fabric)</strong> di kotak khusus ini agar semua Color disinkronkan via <strong>F/A</strong>:</div>
 
       <div class="dropzone" id="spreadZone" style="border-color:var(--neon-yellow); background:rgba(254,228,64,0.08); margin-bottom:8px;" onclick="document.getElementById('spreadInput').click()">
         <input type="file" id="spreadInput" accept=".csv,.xlsx,.xls" class="hidden" onchange="handlePlanningSpreadUpload(event)" />
@@ -176,23 +835,23 @@
     </div>
 
     <div class="tabs">
-      <button id="tabUpload" class="tab-btn active" onclick="switchTab('upload')">📤 Upload &amp; Proses</button>
-      <button id="tabDownloads" class="tab-btn" onclick="switchTab('downloads')">📥 Download</button>
-      <button id="tabManual" class="tab-btn" onclick="switchTab('manual')">🏷️ Luar Line &amp; Manual</button>
+      <button id="tabUpload" class="tab-btn active" onclick="switchTab('upload')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload &amp; Proses</button>
+      <button id="tabDownloads" class="tab-btn" onclick="switchTab('downloads')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</button>
+      <button id="tabManual" class="tab-btn" onclick="switchTab('manual')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Luar Line &amp; Manual</button>
     </div>
 
     <div id="panelUpload">
       <div class="card">
         <div class="dropzone" id="dxfZone" onclick="document.getElementById('dxfInput').click()">
           <input type="file" id="dxfInput" accept=".dxf" class="hidden" onchange="handleDxfUpload(event)" />
-          <div id="dxfStatus" style="font-size:13px; font-weight:700;">📐 Ketuk untuk Unggah File Pola (.DXF)</div>
+          <div id="dxfStatus" style="font-size:13px; font-weight:700;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00f5d4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Unggah File Pola (.DXF)</div>
         </div>
         <div class="dropzone" id="excelZone" onclick="document.getElementById('excelInput').click()">
           <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)" />
-          <div id="excelStatus" style="font-size:13px; font-weight:700;">📊 Ketuk untuk Unggah BOM Excel (.XLSX/.CSV)</div>
+          <div id="excelStatus" style="font-size:13px; font-weight:700;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>Unggah JACJI Excel (.XLSX / .CSV)</div>
         </div>
         <div id="colorwayBox" class="hidden">
-          <label style="font-size:11px; color:var(--neon-cyan); font-weight:700;">PILIH COLORWAY:</label>
+          <label style="font-size:11px; color:var(--neon-cyan); font-weight:700;">PILIH COLOR:</label>
           <select id="colorwaySelect" onchange="applyColorwayMapping()"></select>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
@@ -217,20 +876,11 @@
 <div><label style="font-size:11px;color:var(--muted);">KOLOM:</label><div style="display:flex;gap:4px;"><button type="button" onclick="stepSelectVal('colsSelect',-1)" style="padding:7px 10px;background:#07060e;color:var(--neon-yellow);border:1px solid var(--neon-yellow);border-radius:6px;font-weight:900;">-</button><select id="colsSelect" style="flex:1;margin:0;" onchange="stepSelectVal('colsSelect',0)"><option value="auto">Auto</option><option value="4">4 Kolom</option><option value="5">5 Kolom</option><option value="6">6 Kolom</option><option value="7">7 Kolom</option><option value="8">8 Kolom</option></select><button type="button" onclick="stepSelectVal('colsSelect',1)" style="padding:7px 10px;background:#07060e;color:var(--neon-yellow);border:1px solid var(--neon-yellow);border-radius:6px;font-weight:900;">+</button></div></div>
 <div><label style="font-size:11px;color:var(--muted);">BARIS:</label><div style="display:flex;gap:4px;"><button type="button" onclick="stepSelectVal('rowsSelect',-1)" style="padding:7px 10px;background:#07060e;color:var(--neon-pink);border:1px solid var(--neon-pink);border-radius:6px;font-weight:900;">-</button><select id="rowsSelect" style="flex:1;margin:0;" onchange="stepSelectVal('rowsSelect',0)"><option value="auto">Auto</option><option value="2">2 Baris</option><option value="3">3 Baris</option><option value="4">4 Baris</option><option value="5">5 Baris</option></select><button type="button" onclick="stepSelectVal('rowsSelect',1)" style="padding:7px 10px;background:#07060e;color:var(--neon-pink);border:1px solid var(--neon-pink);border-radius:6px;font-weight:900;">+</button></div></div>
 </div></div>
-<div style="display:flex; gap:8px; margin-bottom:8px;">
-  <button type="button" id="btnForceFullSheet" onclick="toggleForceFullSheet()" class="btn btn-secondary" style="flex:1.4; margin:0; padding:10px; font-size:12px;">📐 PAKSA SUSUNAN PENUH: ON</button>
-  </div>
-<div style="display:flex; gap:8px; margin-bottom:8px;">
-  <button type="button" onclick="clearAllOutsideLineProcesses()" class="btn btn-secondary" style="flex:1; margin:0; padding:10px; font-size:11.5px; border-color:var(--neon-yellow); color:var(--neon-yellow);">🚫 HAPUS SEMUA LUAR LINE</button>
-  <button type="button" onclick="clearWorkspaceAll()" class="btn btn-pink" style="flex:1; margin:0; padding:10px; font-size:11.5px;">🧹 BERSIHKAN LEMBAR KERJA</button>
-</div>
-<button class="btn" style="margin-bottom:8px;" onclick="generateMiniMarker()">🔥 BUAT MINI MARKER</button>
-      <button class="btn btn-secondary" style="margin-bottom:12px;" onclick="loadSampleData()">✨ COBA CONTOH POLA</button>
 
       <div id="resultArea" class="card hidden" style="border-color:var(--neon-pink);">
         <div id="cwSwipeBar" class="hidden" style="display:flex; align-items:center; justify-content:space-between; background:#090814; padding:8px 10px; border-radius:10px; margin-bottom:8px; border:1px solid var(--neon-cyan);">
           <button type="button" onclick="navigateColorway(-1)" style="background:var(--card); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">◀</button>
-          <div id="cwSwipeLabel" style="font-size:11px; font-weight:800; color:var(--neon-yellow);">Colorway 1/1</div>
+          <div id="cwSwipeLabel" style="font-size:11px; font-weight:800; color:var(--neon-yellow);">Color 1/1</div>
           <button type="button" onclick="navigateColorway(1)" style="background:var(--card); color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">▶</button>
         </div>
         <button type="button" class="btn btn-pink" style="margin-bottom:8px;" onclick="openFullPreview()">⛶ PREVIEW 1 LAYAR PENUH</button>
@@ -242,7 +892,7 @@
           <button class="btn" onclick="exportAllPDF()">📄 DOWNLOAD PDF</button>
           <button class="btn btn-secondary" onclick="exportAllPNG()">🖼️ DOWNLOAD PNG</button>
         </div>
-        <button class="btn btn-pink" onclick="saveAllColorwaysBatch()">📁 SAVE SEMUA COLORWAY (ORDER NO)</button>
+        <button class="btn btn-pink" onclick="saveAllColorwaysBatch()">📁 SAVE SEMUA COLOR (ORDER NO)</button>
       </div>
       <div class="card">
         <div class="card-row" style="margin-bottom:8px;">
@@ -287,8 +937,8 @@
     </div>
 
     <div id="floatingActionBar" style="position:fixed; bottom:0; left:0; right:0; z-index:900; background:rgba(11, 9, 26, 0.94); backdrop-filter:blur(8px); border-top:1.5px solid var(--neon-cyan); padding:10px 12px; display:flex; gap:8px; box-shadow:0 -4px 20px rgba(0, 245, 212, 0.25);">
-      <button type="button" class="btn btn-secondary" style="flex:1; padding:11px 8px; font-size:12px; margin:0;" onclick="openSaveScopeModal()">💾 SIMPAN PERUBAHAN</button>
-      <button type="button" class="btn" style="flex:1.2; padding:11px 8px; font-size:12px; margin:0;" onclick="generateMiniMarker()">🔥 BUAT MINI MARKER</button>
+      <button type="button" class="btn btn-secondary" style="flex:1; padding:11px 8px; font-size:12px; margin:0;" onclick="openSaveScopeModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>SIMPAN</button>
+      <button type="button" class="btn" style="flex:1.2; padding:11px 8px; font-size:12px; margin:0;" onclick="generateMiniMarker()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>BUAT MINI MARKER</button>
     </div>
   </div>
 
@@ -296,7 +946,7 @@
   <div id="fullScreenModal" class="hidden" style="position:fixed; inset:0; z-index:9999; background:#05040a; display:none; flex-direction:column;">
     <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#110f21; border-bottom:1.5px solid var(--neon-cyan); gap:6px;">
       <button type="button" onclick="navigateColorway(-1)" style="background:#07060e; color:var(--neon-cyan); border:1.5px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">◀</button>
-      <div id="fsColorwayTitle" style="flex:1; text-align:center; font-size:12px; font-weight:800; color:var(--neon-yellow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Colorway</div>
+      <div id="fsColorwayTitle" style="flex:1; text-align:center; font-size:12px; font-weight:800; color:var(--neon-yellow); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Color</div>
       <button type="button" onclick="navigateColorway(1)" style="background:#07060e; color:var(--neon-cyan); border:1.5px solid var(--neon-cyan); border-radius:8px; padding:6px 12px; font-weight:900;">▶</button>
       <button type="button" onclick="closeFullPreview()" style="background:var(--neon-pink); color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:900;">✕ TUTUP</button>
     </div>
@@ -329,40 +979,9 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
         <div>
           <label style="font-size:11px; color:var(--muted);">FABRIC:</label>
           <select id="qeFabric">
-            <option value="MA">MA (Main Fabric)</option>
-              <option value="T1">T1 (Trim/Fabric T1)</option>
-              <option value="T2">T2 (Trim/Fabric T2)</option>
-              <option value="T3">T3 (Trim/Fabric T3)</option>
-              <option value="T4">T4 (Trim/Fabric T4)</option>
-              <option value="T5">T5 (Trim/Fabric T5)</option>
-              <option value="T6">T6 (Trim/Fabric T6)</option>
-              <option value="T7">T7 (Trim/Fabric T7)</option>
-              <option value="T8">T8 (Trim/Fabric T8)</option>
-              <option value="T9">T9 (Trim/Fabric T9)</option>
-              <option value="T10">T10 (Trim/Fabric T10)</option>
-              <option value="L1">L1 (Lining L1)</option>
-              <option value="L2">L2 (Lining L2)</option>
-              <option value="L3">L3 (Lining L3)</option>
-              <option value="L4">L4 (Lining L4)</option>
-              <option value="L5">L5 (Lining L5)</option>
-              <option value="L6">L6 (Lining L6)</option>
-              <option value="L7">L7 (Lining L7)</option>
-              <option value="L8">L8 (Lining L8)</option>
-              <option value="L9">L9 (Lining L9)</option>
-              <option value="L10">L10 (Lining L10)</option>
-              <option value="N1">N1 (Mesh/Netting N1)</option>
-              <option value="N2">N2 (Mesh/Netting N2)</option>
-              <option value="N3">N3 (Mesh/Netting N3)</option>
-              <option value="N4">N4 (Mesh/Netting N4)</option>
-              <option value="N5">N5 (Mesh/Netting N5)</option>
-              <option value="N6">N6 (Mesh/Netting N6)</option>
-              <option value="N7">N7 (Mesh/Netting N7)</option>
-              <option value="N8">N8 (Mesh/Netting N8)</option>
-              <option value="N9">N9 (Mesh/Netting N9)</option>
-              <option value="N10">N10 (Mesh/Netting N10)</option>
-              <option value="N11">N11 (Mesh/Netting N11)</option>
-              <option value="N12">N12 (Mesh/Netting N12)</option>
-            </select>
+            <option value="MA">MA</option><option value="T1">T1</option><option value="T2">T2</option>
+            <option value="T3">T3</option><option value="L2">L2</option><option value="N1">N1</option>
+          </select>
         </div>
         <div>
           <label style="font-size:11px; color:var(--muted);">QTY / PAIR:</label>
@@ -399,7 +1018,7 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
   <div id="exportFormatModal" class="hidden" style="position:fixed; inset:0; z-index:999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:16px;">
     <div style="width:100%; max-width:360px; background:#141226; border:1.5px solid var(--neon-cyan); border-radius:14px; padding:18px; box-shadow:0 12px 32px rgba(0,245,212,0.28); text-align:center;">
       <div style="font-size:15px; font-weight:900; color:var(--neon-cyan); margin-bottom:6px;">💾 PILIH FORMAT SIMPAN / DOWNLOAD</div>
-      <div style="font-size:12px; color:#cbd5e1; margin-bottom:14px;">Pilih format file untuk seluruh colorway di dalam folder ZIP:</div>
+      <div style="font-size:12px; color:#cbd5e1; margin-bottom:14px;">Pilih format file untuk seluruh color di dalam folder ZIP:</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
         <button type="button" class="btn" style="margin:0; padding:12px 8px; font-size:13px;" onclick="confirmBatchFormat('pdf')">📄 FORMAT PDF</button>
         <button type="button" class="btn btn-pink" style="margin:0; padding:12px 8px; font-size:13px;" onclick="confirmBatchFormat('png')">🖼️ FORMAT PNG</button>
@@ -407,49 +1026,6 @@ try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
       <button type="button" class="btn btn-secondary" style="margin:0; padding:9px; font-size:12px;" onclick="closeExportFormatModal()">BATAL</button>
     </div>
   </div>
-
-<script id="neonBurnGlobalScript">
-(function() {
-  const st = document.createElement("style");
-  st.textContent = `
-    @keyframes neonBurnFlame {
-      0% { box-shadow: 0 0 8px #00f5d4, 0 0 20px #ff007f, 0 -8px 26px #fee440, inset 0 0 14px rgba(254,228,64,0.85); filter: brightness(1.38) saturate(1.4); transform: scale(0.95); }
-      45% { box-shadow: 0 -10px 30px #ff007f, 0 -16px 40px rgba(254,228,64,0.9), 0 0 24px #00f5d4, inset 0 0 18px rgba(255,0,127,0.7); filter: brightness(1.22); transform: scale(1.03); }
-      100% { filter: brightness(1); transform: scale(1); }
-    }
-    .neon-burning-active { animation: neonBurnFlame 0.55s cubic-bezier(0.22, 1, 0.36, 1) !important; position: relative; z-index: 9; }
-    .neon-ember-spark { position: fixed; pointer-events: none; border-radius: 50%; z-index: 99999999; will-change: transform, opacity; }
-  `;
-  document.head.appendChild(st);
-  const cols = ["#00f5d4", "#ff007f", "#fee440", "#ff5e00", "#ffffff"];
-  const triggerBurn = (el, x, y) => {
-    if (!el) return;
-    el.classList.remove("neon-burning-active");
-    void el.offsetWidth;
-    el.classList.add("neon-burning-active");
-    for (let i = 0; i < 16; i++) {
-      const sp = document.createElement("span");
-      sp.className = "neon-ember-spark";
-      const sz = 3.5 + Math.random() * 5, c = cols[i % cols.length];
-      sp.style.cssText = `width:${sz}px;height:${sz}px;left:${x}px;top:${y}px;background:${c};box-shadow:0 0 8px ${c},0 0 14px #ff007f;`;
-      document.body.appendChild(sp);
-      const ang = (-Math.PI / 2) + (Math.random() - 0.5) * 2.3, dist = 28 + Math.random() * 52;
-      sp.animate([
-        { transform: "translate(-50%,-50%) scale(1.25)", opacity: 1 },
-        { transform: `translate(calc(-50% + ${Math.cos(ang)*dist}px),calc(-50% + ${Math.sin(ang)*dist - 16}px)) scale(0.1)`, opacity: 0 }
-      ], { duration: 450 + Math.random() * 250, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }).onfinish = () => sp.remove();
-    }
-  };
-  document.addEventListener("touchstart", e => {
-    const t0 = e.touches && e.touches[0];
-    const btn = e.target && e.target.closest("button, .btn, .tab-btn, .dropzone");
-    if (btn && t0) triggerBurn(btn, t0.clientX, t0.clientY);
-  }, { passive: true });
-  document.addEventListener("mousedown", e => {
-    const btn = e.target && e.target.closest("button, .btn, .tab-btn, .dropzone");
-    if (btn) triggerBurn(btn, e.clientX, e.clientY);
-  }, { passive: true });
-})();
-</script>
+<div id="backToastNotice">Tekan kembali sekali lagi untuk keluar</div>
 </body>
 </html>
