@@ -1344,7 +1344,7 @@ function generateMiniMarker() {
       const effH = piece.autoRotate90 ? piece.width : piece.height;
       const drawSideBySide = false;
       const isGiant = (cSpan > 1 || rSpan > 1);
-      const pairScale = isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const pairScale = (isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale)) * (piece.customScale || 1);
       const finalW = effW * pairScale, finalH = eh_val = effH * pairScale;
       const finalX = cx + leftOffset + (maxDrawW - finalW) / 2;
       const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
@@ -1405,7 +1405,7 @@ function generateMiniMarker() {
             const py = finalY + ry * pairScale;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
-          ctx.strokeStyle = poly.isOuter ? '#0055ff' : '#64748b';
+          ctx.strokeStyle = poly.isOuter ? '#0000ff' : '#64748b';
           ctx.lineWidth = poly.isOuter ? 2.1 : 0.9;
           if (poly.isOuter) ctx.closePath();
           ctx.stroke();
@@ -3131,7 +3131,7 @@ function buildEditableVectorPdf() {
       const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
       const ew = piece.autoRotate90 ? piece.height : piece.width, eh = piece.autoRotate90 ? piece.width : piece.height;
       const isGiant = (cSpan > 1 || rSpan > 1);
-      const pairScale = isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale);
+      const pairScale = (isGiant ? (piece.maxAllowedScale || globalUniformScale) : Math.min(globalUniformScale, piece.maxAllowedScale || globalUniformScale)) * (piece.customScale || 1);
       const finalW = ew * pairScale, finalH = eh * pairScale;
       const finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
       const centerDrawX = finalX + finalW / 2;
@@ -3270,7 +3270,7 @@ function buildCorelEditableSvg() {
     const leftOffset = (circleR * 2) + 8, rightSpace = p.qtyLabel ? 34 : 10;
     const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
     const ew = p.autoRotate90 ? p.height : p.width, eh = p.autoRotate90 ? p.width : p.height;
-    const sc = Math.min(globalScale, p.maxAllowedScale || globalScale), finalW = ew * sc, finalH = eh * sc;
+    const sc = (Math.min(globalScale, p.maxAllowedScale || globalScale) * (p.customScale || 1)), finalW = ew * sc, finalH = eh * sc;
     const finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
     const pos = calcSmartCirclePos(p, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR);
 
@@ -3282,7 +3282,7 @@ function buildCorelEditableSvg() {
       p.polygons.forEach(poly => {
         if (!poly.pts || poly.pts.length < 2) return;
         const ptsStr = poly.pts.map(pt => ((finalX + (p.autoRotate90 ? pt.y : pt.x) * sc).toFixed(2) + ',' + (finalY + (p.autoRotate90 ? pt.x : pt.y) * sc).toFixed(2))).join(' ');
-        out.push('<' + (poly.isOuter ? 'polygon' : 'polyline') + ' points="' + ptsStr + '" fill="none" stroke="' + (poly.isOuter ? '#0055ff' : '#64748b') + '" stroke-width="' + (poly.isOuter ? '2.1' : '0.9') + '"/>');
+        out.push('<' + (poly.isOuter ? 'polygon' : 'polyline') + ' points="' + ptsStr + '" fill="none" stroke="' + (poly.isOuter ? '#0000ff' : '#64748b') + '" stroke-width="' + (poly.isOuter ? '2.1' : '0.9') + '"/>');
       });
     }
     const textX = (finalX + finalW / 2).toFixed(1), py1 = (finalY + finalH + labelSize + 4).toFixed(1);
@@ -3497,15 +3497,38 @@ window.openQuickPatternEditor = function(piece) {
         </div>
       </div>
 
-      <div style="display:flex; gap:8px; margin-top:6px;">
-        <button type="button" id="qpSaveBtn" class="btn" style="flex:1.4; padding:11px; font-size:13px; margin:0;">💾 TERAPKAN</button>
+      <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">SKALA PATTERN INI (ANGKA PENGALI):</label>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button type="button" id="qpScaleMinus" style="width:42px; height:36px; border-radius:8px; border:1px solid rgba(20,184,166,0.5); background:#141b29; color:#5eead4; font-size:18px; font-weight:800; cursor:pointer;">-</button>
+            <input type="number" id="qpScale" step="0.1" min="0.2" max="3.0" value="${Number(piece.customScale || 1).toFixed(1)}" style="flex:1; text-align:center; font-weight:800; font-size:14px; margin:0;" />
+            <button type="button" id="qpScalePlus" style="width:42px; height:36px; border-radius:8px; border:1px solid rgba(20,184,166,0.5); background:#141b29; color:#5eead4; font-size:18px; font-weight:800; cursor:pointer;">+</button>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button type="button" id="qpSaveBtn" class="btn" style="flex:1.4; padding:11px; font-size:13px; margin:0;">💾 TERAPKAN</button>
         <button type="button" onclick="document.getElementById('quickPatternModal').style.display='none'" class="btn btn-secondary" style="flex:0.8; padding:11px; font-size:12px; margin:0;">BATAL</button>
       </div>
     </div>
   `;
   modal.style.display = "flex";
 
+  const applyLivePieceScale = (delta) => {
+    const inp = document.getElementById("qpScale");
+    if (!inp) return;
+    let v = Math.round(((parseFloat(inp.value) || 1) + delta) * 10) / 10;
+    v = Math.min(3.0, Math.max(0.2, v));
+    inp.value = v.toFixed(1);
+    piece.customScale = v;
+    if (typeof forceInstantCanvasRefresh === "function") forceInstantCanvasRefresh();
+    else if (typeof generateMiniMarker === "function") generateMiniMarker();
+  };
+  document.getElementById("qpScaleMinus").onclick = () => applyLivePieceScale(-0.1);
+  document.getElementById("qpScalePlus").onclick = () => applyLivePieceScale(0.1);
+  document.getElementById("qpScale").onchange = () => applyLivePieceScale(0);
+
   document.getElementById("qpSaveBtn").onclick = function() {
+    piece.customScale = Math.min(3.0, Math.max(0.2, parseFloat(document.getElementById("qpScale").value) || 1));
     piece.name = (document.getElementById("qpName").value || piece.name).trim().toUpperCase();
     piece.sizeText = (document.getElementById("qpSize").value || piece.sizeText).trim();
     piece.fabric = document.getElementById("qpFab").value || piece.fabric;
@@ -3738,7 +3761,7 @@ function handleLululemonExcelUpload(event) {
 
       workbook.SheetNames.forEach(sheetName => {
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
-        let curBuyer = '', curModel = '', curCw = '', hdr = null;
+        let curBuyer = '', curModel = '', curCw = '', blockColor = '', hdr = null;
 
         rows.forEach(rawRow => {
           const cells = rawRow.map(c => String(c || '').trim());
@@ -3753,6 +3776,7 @@ function handleLululemonExcelUpload(event) {
             }
             if (/^COLORWAY\s*:/i.test(c)) {
               curCw = c.replace(/^COLORWAY\s*:/i, '').trim();
+              blockColor = '';
               hdr = null;
             }
           });
@@ -3790,7 +3814,8 @@ function handleLululemonExcelUpload(event) {
           const specName = hdr.spec !== -1 ? (cells.at(hdr.spec) || '') : '';
           const rowColor = (hdr.color < cells.length ? (cells.at(hdr.color) || '') : '').trim().toUpperCase();
 
-          const cwLabel = (curCw || rowColor || curBuyer || 'LULULEMON-DEFAULT').toUpperCase();
+          if (rowColor && rowColor !== '_' && !blockColor) blockColor = rowColor;
+          const cwLabel = (curCw || blockColor || rowColor || curBuyer || 'LULULEMON-DEFAULT').toUpperCase();
           if (!excelColorways[cwLabel]) {
             excelColorways[cwLabel] = {
               cleanColor: cwLabel,
