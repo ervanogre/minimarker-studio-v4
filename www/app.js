@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function appendSyncLog(msg) { console.log("[SYNC LOG]:", msg); }
 let parsedPieces = [];
 let excelColorways = {};
+      
 let bomTemplates = {};
 let currentStyleName = "JS0A47JK";
 let currentColorwayName = "BUBBLE GUM A5Y";
@@ -207,12 +208,31 @@ function extractPiecesFromDxf(dxf) {
         const cleanName = fullText.replace(/Sewing|Cut|Boundary|Piece|Name[:\s]*/gi, '').replace(/-S_\d+/gi, '').split('|').pop().trim().toUpperCase().substring(0, 26);
         rawPieces.push({
           name: cleanName || blockName.toUpperCase(),
-          sizeText: (bounds.height / 10).toFixed(1) + '*' + (bounds.width / 10).toFixed(1),
+          sizeText: (() => {
+            const mAnn = String(fullText || '').match(/ANNOTATION\s*:\s*([^|\n\r]+)/i);
+            const annStr = mAnn ? mAnn.at(1) : String(fullText || '');
+            const twoSizes = [...annStr.matchAll(/(\d+(?:\.\d+)?)\s*[*xX]\s*(\d+(?:\.\d+)?)/g)].map(m => m.at(1) + '*' + m.at(2));
+            return twoSizes.length >= 2 ? twoSizes.join(' + ') : ((bounds.height / 10).toFixed(1) + '*' + (bounds.width / 10).toFixed(1));
+          })(),
           rawText: fullText,
           polygons: normPolys,
           width: bounds.width,
           height: bounds.height,
-          fabric: 'MA',
+          catSize: (() => {
+            const mCat = String(fullText || '').match(/CATEGORY\s*:\s*(\d+(?:\.\d+)?\s*[*xX]\s*\d+(?:\.\d+)?)/i);
+            return mCat ? mCat.at(1).replace(/[xX]/g, '*').replace(/\s+/g, '') : '';
+          })(),
+          fabric: (() => {
+            const mAnn = String(fullText || '').match(/ANNOTATION\s*:\s*([^|\n\r]+)/i);
+            const targetStr = mAnn ? mAnn.at(1) : String(fullText || '');
+            const mFab = targetStr.match(/(?:^|[^A-Z0-9])(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)(?=$|[^A-Z0-9]|\*)/i)
+              || String(fullText || '').match(/(?:^|[^A-Z0-9])(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)(?=$|[^A-Z0-9]|\*)/i);
+            if (!mFab) return 'MA';
+            const f = mFab.at(1).toUpperCase();
+            if (f === 'L1') return 'L2';
+            if (f === 'C1') return 'M1';
+            return f;
+          })(),
           qtyLabel: (() => {
             if (/\b(A\/B|L\/R|PAIR)\b/i.test(fullText)) return 'A/B';
             const mDxfQty = fullText.match(/(?:^|\s|\||-)X\s*([2-8])\b/i);
@@ -480,7 +500,117 @@ function parseBomZNZFormat(workbook) {
   return added > 0;
 }
 
-function handleExcelUpload(event) {
+
+function parseBomLululemonFormat(workbook) {
+  let added = 0;
+  const validFabRegex = /^(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)(\b|[^A-Z0-9])/i;
+  const normFabCode = (cat) => {
+    const u = String(cat || '').trim().toUpperCase();
+    const m = u.match(/^(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)/);
+    if (!m) return '';
+    return m.at(1) === 'L1' ? 'L2' : m.at(1);
+  };
+
+  workbook.SheetNames.forEach(sheetName => {
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
+    let curBuyer = '', curModel = '', curCw = '';
+    let hdr = null;
+
+    rows.forEach((row) => {
+      const cells = row.map(c => String(c || '').trim());
+      const joined = cells.join(' ');
+      if (!joined.trim()) return;
+
+      // Deteksi metadata header blok Lululemon
+      cells.forEach(c => {
+        if (/^BUYERs*NAMEs*:/i.test(c)) curBuyer = c.replace(/^BUYERs*NAMEs*:/i, '').trim();
+        if (/^MODELs*NOs*:/i.test(c)) {
+          curModel = c.replace(/^MODELs*NOs*:/i, '').trim();
+          const styleInput = document.getElementById('styleNoInput');
+          if (styleInput && !styleInput.value) styleInput.value = curModel.split('_').at(0);
+        }
+        if (/^COLORWAYs*:/i.test(c)) {
+          curCw = c.replace(/^COLORWAYs*:/i, '').trim();
+          hdr = null; // Reset header tabel untuk blok colorway baru
+        }
+      });
+
+      // Deteksi baris header tabel komponen: No. | Annotation(ENG) | Category | Type | Qty | Size
+      const idxAnnot = cells.findIndex(c => /^ANNOTATION/i.test(c));
+      const idxCat = cells.findIndex(c => /^CATEGORY$/i.test(c));
+      const idxSize = cells.findIndex(c => /^SIZE$/i.test(c));
+      if (idxAnnot !== -1 && idxCat !== -1 && idxSize !== -1) {
+        hdr = {
+          no: cells.findIndex(c => /^NO.?$/i.test(c)),
+          annot: idxAnnot,
+          cat: idxCat,
+          type: cells.findIndex(c => /^TYPE$/i.test(c)),
+          qty: cells.findIndex(c => /^QTY$/i.test(c)),
+          size: idxSize,
+          mat: cells.findIndex(c => /^MATERIAL/i.test(c)),
+          spec: cells.findIndex(c => /^SPEC$/i.test(c)),
+          color: idxSize + 4 // Kolom Color / Colorway code berada 4 kolom setelah Size
+        };
+        return;
+      }
+
+      if (!hdr) return;
+      const noVal = hdr.no !== -1 ? cells.at(hdr.no) : '';
+      if (!/^\d+$/.test(noVal)) return;
+
+      const catRaw = cells.at(hdr.cat) || '';
+      if (!validFabRegex.test(catRaw)) return;
+      const fab = normFabCode(catRaw);
+      if (!fab) return;
+
+      const annotRaw = cells.at(hdr.annot) || '';
+      const sizeRaw = cells.at(hdr.size) || '';
+      const qtyNum = parseInt(cells.at(hdr.qty)) || 1;
+      const matName = hdr.mat !== -1 ? (cells.at(hdr.mat) || '') : '';
+      const specName = hdr.spec !== -1 ? (cells.at(hdr.spec) || '') : '';
+      const rowColor = (hdr.color < cells.length ? (cells.at(hdr.color) || '') : '').trim().toUpperCase();
+
+      const effectiveCw = (curCw || rowColor || curBuyer || 'DEFAULT').toUpperCase();
+      const cwKey = effectiveCw;
+      if (!excelColorways[cwKey]) {
+        excelColorways[cwKey] = {
+          cleanColor: effectiveCw,
+          sheetName: curModel ? curModel.split('_').at(0) : sheetName,
+          fabricSpecs: {},
+          pieces: []
+        };
+      }
+
+      if (matName && matName !== '_') {
+        const colSuffix = (rowColor && rowColor !== '_') ? ' (' + rowColor + ')' : '';
+        excelColorways[cwKey].fabricSpecs[fab] = (matName + ' ' + specName + colSuffix).replace(/\s+/g, ' ').trim();
+      }
+
+      // Ekstrak kode pola DXF dari Annotation(ENG), misal "GUS-BK-GUSSET-BACK..." -> "GUS-BK" & "GUS"
+      const dashParts = annotRaw.split('-').map(s => s.trim()).filter(Boolean);
+      let shortCode = dashParts.at(0) || annotRaw;
+      if (dashParts.length >= 2 && /^(BK|T|B|K|GUS)$/i.test(dashParts.at(1))) {
+        shortCode = dashParts.at(0) + '-' + dashParts.at(1);
+      }
+      const cleanName = dashParts.length > 1 ? dashParts.slice(1).join(' ') : annotRaw;
+      const codes = [...new Set([shortCode.toUpperCase(), (dashParts.at(0) || '').toUpperCase(), annotRaw.toUpperCase()].filter(Boolean))];
+
+      excelColorways[cwKey].pieces.push({
+        fabric: fab,
+        name: cleanName.toUpperCase(),
+        raw: annotRaw.toUpperCase(),
+        codes,
+        size: sizeRaw,
+        qty: qtyNum
+      });
+      added++;
+    });
+  });
+  return added > 0;
+}
+
+function handleExcelUpload(event, buyerTag) {
+  window._activeJacjiBuyer = buyerTag || 'JANSPORT';
   const file = event.target.files && event.target.files.item(0);
   if (!file) return;
   const reader = new FileReader();
@@ -490,13 +620,20 @@ function handleExcelUpload(event) {
       const workbook = XLSX.read(data, { type: 'array' });
       excelColorways = {};
       const targetSheets = workbook.SheetNames.filter(s => /(VAI|FAB)/i.test(s) && !/^(WEB|FORM)/i.test(s.trim()));
-      const sheetsToRead = targetSheets.length > 0 ? targetSheets : workbook.SheetNames;
+      if (typeof parseBomLululemonFormat === 'function') {
+        parseBomLululemonFormat(workbook);
+      }
+      const sheetsToRead = Object.keys(excelColorways).length > 0 ? [] : (targetSheets.length > 0 ? targetSheets : workbook.SheetNames);
       sheetsToRead.forEach(sheetName => {
         if (/^(WEB|FORM)/i.test(sheetName.trim())) return;
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
         parseBomRows(rows, sheetName.trim());
       });
       let cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+      if (cwKeys.length === 0 && typeof parseBomLululemonFormat === 'function') {
+        parseBomLululemonFormat(workbook);
+        cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
+      }
       if (cwKeys.length === 0 && typeof parseBomZNZFormat === 'function') {
         parseBomZNZFormat(workbook);
         cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0 && !/^WIDTH\b/i.test(excelColorways[k].cleanColor));
@@ -506,8 +643,13 @@ function handleExcelUpload(event) {
         const sel = document.getElementById('colorwaySelect');
         sel.innerHTML = cwKeys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
         document.getElementById('colorwayBox').classList.remove('hidden');
-        document.getElementById('excelZone').classList.add('loaded');
-        document.getElementById('excelStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Color JACJI siap)';
+        const isRei = (buyerTag === 'REI');
+        const zId = isRei ? 'reiExcelZone' : 'excelZone';
+        const sId = isRei ? 'reiExcelStatus' : 'excelStatus';
+        const bName = isRei ? 'REI' : 'JanSport';
+        document.getElementById(zId)?.classList.add('loaded');
+        const stEl = document.getElementById(sId);
+        if (stEl) stEl.innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Color ' + bName + ' siap)';
         applyColorwayMapping();
       } else {
         alert("Tidak ditemukan tabel komponen fabric (VAI/FAB) pada file JACJI ini.");
@@ -645,15 +787,66 @@ function applyColorwayMapping() {
   parsedPieces = JSON.parse(JSON.stringify(window._cleanDxfPieces));
   const availableBom = jacji.pieces.map((b, idx) => ({ ...b, idx, used: false }));
   parsedPieces.forEach(p => {
-    const d1 = p.width / 10, d2 = p.height / 10, up = p.rawText.toUpperCase();
+    const catParts = String(p.catSize || '').split('*').map(Number);
+    const d1 = (catParts.length === 2 && catParts.at(0) > 0) ? catParts.at(0) : (p.width / 10);
+    const d2 = (catParts.length === 2 && catParts.at(1) > 0) ? catParts.at(1) : (p.height / 10);
+    const up = p.rawText.toUpperCase().replace(/\bDIV-?M\b/g, 'DIVIP DIV');
+    const mAnn2 = String(p.rawText || '').match(/ANNOTATION\s*:\s*([^|\n\r]+)/i);
+    const annStr2 = mAnn2 ? mAnn2.at(1) : String(p.rawText || '');
+    const explicitPairs = [...annStr2.matchAll(/(\d+(?:\.\d+)?)\s*[*xX]\s*(\d+(?:\.\d+)?)/g)].map(m => ({
+      s1: parseFloat(m.at(1)),
+      s2: parseFloat(m.at(2)),
+      raw: m.at(1) + '*' + m.at(2)
+    }));
+    const dxfFab = String(p.fabric || '').trim().toUpperCase();
+
+    if (explicitPairs.length >= 2) {
+      const matchedList = [];
+      explicitPairs.forEach(ep => {
+        let bestB = null, bestSc = Infinity;
+        availableBom.forEach(b => {
+          if (b.used) return;
+          const [bs1, bs2] = String(b.size || '').split('*').map(Number);
+          if (!bs1 || !bs2) return;
+          const diff = Math.min(Math.abs(ep.s1 - bs1) + Math.abs(ep.s2 - bs2), Math.abs(ep.s1 - bs2) + Math.abs(ep.s2 - bs1));
+          if (diff <= 2.2) {
+            const bomFab = String(b.fabric || '').trim().toUpperCase();
+            let sc = diff + (dxfFab && bomFab && dxfFab === bomFab ? -100 : (dxfFab && bomFab ? 250 : 0));
+            if (sc < bestSc) { bestSc = sc; bestB = b; }
+          }
+        });
+        if (bestB) {
+          bestB.used = true;
+          matchedList.push(bestB);
+        }
+      });
+      p.sizeText = explicitPairs.map(e => e.raw).join(' + ');
+      if (matchedList.length > 0) {
+        matchedList.sort((a, b) => a.idx - b.idx);
+        const first = matchedList.at(0);
+        p.bomOrder = first.idx;
+        p.fabric = first.fabric || dxfFab;
+        p.name = [...new Set(matchedList.map(m => m.name).filter(Boolean))].join(' / ');
+        if (first.qty > 1 && !p.qtyLabel) p.qtyLabel = 'X' + first.qty;
+      }
+      return;
+    }
+
     let bestItem = null, bestScore = Infinity;
+    const dxfWords = up.split(/[^A-Z0-9]+/).filter(w => w.length >= 3 && !['PIECE','NAME','SIZE','QUANTITY','ANNOTATION','CATEGORY','MODARIS'].includes(w));
     availableBom.forEach(b => {
-      const [s1, s2] = b.size.split('*').map(Number);
+      const [s1, s2] = String(b.size || '').split('*').map(Number);
       if (!s1 || !s2) return;
       const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
       if (minDiff <= 2.2) {
-        let score = minDiff + (b.used ? 10 : 0);
-        if (b.codes && b.codes.some(c => up.includes(c))) score -= 5;
+        const bomFab = String(b.fabric || '').trim().toUpperCase();
+        let score = minDiff + (b.used ? 25 : 0);
+        if (dxfFab && bomFab) {
+          score += (dxfFab === bomFab) ? -100 : 250;
+        }
+        if (b.codes && b.codes.some(c => c.length >= 2 && up.includes(c))) score -= 40;
+        const bomWords = String(b.name || '').toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length >= 4);
+        if (dxfWords.some(dw => bomWords.includes(dw))) score -= 25;
         if (score < bestScore) { bestScore = score; bestItem = b; }
       }
     });
@@ -709,6 +902,7 @@ function applyColorwayMapping() {
   });
   // Jika 1 pattern DXF dipakai di >1 fabric pada JACJI, buat komponen terpisah untuk tiap fabric yang berbeda
   const extraCrossFabPieces = [];
+  if (window._activeJacjiBuyer !== 'LULULEMON') {
   const existingFabKeys = new Set(parsedPieces.map(p => `${p.fabric}|${p.name}|${p.sizeText}`));
   availableBom.forEach(b => {
     if (b.used) return;
@@ -736,7 +930,8 @@ function applyColorwayMapping() {
     }
   });
   if (extraCrossFabPieces.length > 0) {
-    parsedPieces = parsedPieces.concat(extraCrossFabPieces);
+      parsedPieces = parsedPieces.concat(extraCrossFabPieces);
+    }
   }
 
   renderPieceMappingList();
@@ -921,6 +1116,49 @@ function wrapCanvasLines(ctx, text, maxW) {
   if (cur) lines.push(cur);
   return lines;
 }
+
+function calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR) {
+  const effW = piece.autoRotate90 ? piece.height : piece.width;
+  const effH = piece.autoRotate90 ? piece.width : piece.height;
+  const scale = effW > 0 ? (finalW / effW) : 1;
+  const bandTop = Math.max(cy + circleR + 4, finalY + Math.min(circleR, finalH * 0.25));
+  const yMin = bandTop - circleR - 3;
+  const yMax = bandTop + circleR + 3;
+
+  let minPolyX = finalX;
+  if (Array.isArray(piece.polygons) && piece.polygons.length > 0 && effW > 0) {
+    let foundInBand = Infinity;
+    piece.polygons.forEach(poly => {
+      if (!poly.pts) return;
+      poly.pts.forEach(pt => {
+        const rx = (piece.autoRotate90 ? pt.y : pt.x) * scale;
+        const ry = (piece.autoRotate90 ? pt.x : pt.y) * scale;
+        const px = finalX + rx;
+        const py = finalY + ry;
+        if (py >= yMin && py <= yMax && px < foundInBand) {
+          foundInBand = px;
+        }
+      });
+    });
+    if (foundInBand < Infinity) minPolyX = foundInBand;
+  }
+
+  // Tempelkan lingkaran tepat 5px di kiri kontur aktual pattern
+  let numCx = minPolyX - circleR - 5;
+  let numCy = bandTop;
+
+  // Jika menabrak batas kiri sel (cx), coba taruh tepat di atas sudut kiri pattern bila ruang atas cukup
+  if (numCx < cx + circleR + 2) {
+    if (finalY - cy >= (circleR * 2) + 8) {
+      numCx = Math.max(cx + circleR + 3, minPolyX + circleR);
+      numCy = finalY - circleR - 4;
+    } else {
+      numCx = cx + circleR + 2;
+    }
+  }
+  return { numCx, numCy };
+}
+
 function generateMiniMarker() {
   if (parsedPieces.length === 0) {
     alert("Silakan unggah file DXF terlebih dahulu atau klik 'Coba Contoh'.");
@@ -1112,8 +1350,7 @@ function generateMiniMarker() {
       const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
       const centerDrawX = finalX + finalW / 2;
 
-      const numCx = Math.max(cx + circleR + 3, finalX - circleR - 5);
-      const numCy = Math.max(cy + circleR + 6, finalY + circleR);
+      const { numCx, numCy } = calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR);
       ctx.beginPath();
       ctx.arc(numCx, numCy, circleR, 0, Math.PI * 2);
       ctx.strokeStyle = '#000000';
@@ -1168,7 +1405,7 @@ function generateMiniMarker() {
             const py = finalY + ry * pairScale;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
-          ctx.strokeStyle = poly.isOuter ? '#000000' : '#64748b';
+          ctx.strokeStyle = poly.isOuter ? '#0055ff' : '#64748b';
           ctx.lineWidth = poly.isOuter ? 2.1 : 0.9;
           if (poly.isOuter) ctx.closePath();
           ctx.stroke();
@@ -1581,7 +1818,7 @@ function openToolMode(mode) {
         if (el.id !== 'resultArea' && !el.querySelector('#fontGridCard')) el.classList.add('hidden');
       });
     }
-    if (resultArea && typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0) {
+    if (resultArea) resultArea.classList.add('hidden'); if (false) {
       resultArea.classList.remove('hidden');
     }
     const btnMenu2 = document.getElementById('btnGoToMenu2');
@@ -1613,7 +1850,7 @@ function openToolMode(mode) {
         sel.innerHTML = keys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
         sel.value = keys.includes(prevVal) ? prevVal : keys[0];
         if (typeof applyColorwayMapping === 'function') applyColorwayMapping();
-        if (typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0 && typeof generateMiniMarker === 'function') {
+        if (!isAutoSyncMode && typeof generatedCanvases !== 'undefined' && generatedCanvases.length > 0 && typeof generateMiniMarker === 'function') {
           generateMiniMarker();
         }
       }
@@ -1671,6 +1908,81 @@ function runAutoSyncOnly() {
   const resultArea = document.getElementById('resultArea');
   if (resultArea) resultArea.classList.remove('hidden');
   appendSyncLog("✅ Auto Sync selesai! Urutan susunan 100% sesuai JACJI (" + (cwKeys.length || 1) + " Color).");
+}
+
+
+function createNewWorkspace() {
+  if (typeof parsedPieces !== "undefined") parsedPieces = [];
+  window._cleanDxfPieces = [];
+  window._menu1MasterOrderMap = {};
+  window._spreadColorways = {};
+  if (typeof excelColorways !== "undefined") excelColorways = {};
+  if (typeof bomTemplates !== "undefined") bomTemplates = {};
+  if (typeof generatedCanvases !== "undefined") generatedCanvases = [];
+  if (typeof colorwayList !== "undefined") colorwayList = [];
+  if (typeof activeColorwayIdx !== "undefined") activeColorwayIdx = 0;
+  if (typeof currentColorwayName !== "undefined") currentColorwayName = "";
+  if (typeof dxfFileName !== "undefined") dxfFileName = "";
+
+  ["dxfInput", "excelInput", "reiExcelInput", "luluExcelInput", "spreadInput"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  const dxfSt = document.getElementById("dxfStatus");
+  if (dxfSt) dxfSt.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00f5d4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>DXF';
+  const excSt = document.getElementById("excelStatus");
+  if (excSt) excSt.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>JACJI JANSPORT';
+  const reiSt = document.getElementById("reiExcelStatus");
+  if (reiSt) reiSt.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>JACJI REI';
+  const luluSt = document.getElementById("luluExcelStatus");
+  if (luluSt) luluSt.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>JACJI LULU LEMON';
+  const sprSt = document.getElementById("spreadStatus");
+  if (sprSt) sprSt.textContent = "📋 PLANNING SPREAD JANSPORT (.CSV/.XLSX)";
+
+  document.querySelectorAll(".dropzone.loaded").forEach(z => z.classList.remove("loaded"));
+
+  const cwBox = document.getElementById("colorwayBox");
+  if (cwBox) cwBox.classList.add("hidden");
+  const cwSel = document.getElementById("colorwaySelect");
+  if (cwSel) cwSel.innerHTML = "";
+
+  const resArea = document.getElementById("resultArea");
+  if (resArea) resArea.classList.add("hidden");
+  const mCont = document.getElementById("markerContainer");
+  if (mCont) mCont.innerHTML = "";
+
+  const pList = document.getElementById("pieceMappingList");
+  if (pList) pList.innerHTML = '<div class="card-sub">Belum ada file DXF yang dimuat.</div>';
+  const dynProc = document.getElementById("dynamicProcessColors");
+  if (dynProc) dynProc.innerHTML = '<div class="card-sub">Klik "Buat Mini Marker" terlebih dahulu untuk memunculkan proses.</div>';
+
+  if (typeof switchTab === "function" && !isAutoSyncMode) switchTab("upload");
+  window.scrollTo(0, 0);
+}
+
+function clearAllLuarLine() {
+  if (Array.isArray(parsedPieces)) {
+    parsedPieces.forEach(p => { p.processLabel = ""; });
+  }
+  if (Array.isArray(window._cleanDxfPieces)) {
+    window._cleanDxfPieces.forEach(p => { p.processLabel = ""; });
+  }
+  if (typeof colorwayList !== "undefined" && Array.isArray(colorwayList)) {
+    colorwayList.forEach(cw => {
+      if (Array.isArray(cw.pieces)) cw.pieces.forEach(p => { p.processLabel = ""; });
+    });
+  }
+  if (window._menu1MasterOrderMap) {
+    Object.keys(window._menu1MasterOrderMap).forEach(k => {
+      if (window._menu1MasterOrderMap[k]) window._menu1MasterOrderMap[k].processLabel = "";
+    });
+  }
+  if (typeof renderPieceMappingList === "function") renderPieceMappingList();
+  if (typeof renderDynamicProcessColors === "function") renderDynamicProcessColors();
+  if (typeof generatedCanvases !== "undefined" && generatedCanvases.length > 0 && typeof generateMiniMarker === "function") {
+    generateMiniMarker();
+  }
 }
 
 function backToSplash() {
@@ -1732,9 +2044,10 @@ async function runAutoSyncNow() {
         if (s.p > 2.2) { s.p = 0; s.idx = (s.idx + 1) % tpls.length; }
         const t = tpls[s.idx];
         const fade = s.p > 1.9 ? Math.max(0, 1 - (s.p - 1.9) / 0.3) : 1;
-        ctx.save(); ctx.translate(s.cx, s.cy); ctx.globalAlpha = 0.32 * fade; ctx.strokeStyle = t.color;
+        ctx.save(); ctx.translate(s.cx, s.cy); ctx.globalAlpha = 0.38 * fade; ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.5; ctx.setLineDash([]);
         const h1 = tracePoly(ctx, t.pts, s.sc, s.p / 0.7);
+        ctx.strokeStyle = t.color;
         if (s.p < 0.7) {
           ctx.globalAlpha = 0.9; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h1.hx, h1.hy, 2.5, 0, Math.PI * 2); ctx.fill();
         }
@@ -2166,7 +2479,8 @@ function parseBomZNZFormat(workbook) {
   return added > 0;
 }
 
-function handleExcelUpload(event) {
+function handleExcelUpload(event, buyerTag) {
+  window._activeJacjiBuyer = buyerTag || 'JANSPORT';
   const file = event.target.files && event.target.files.item(0);
   if (!file) return;
   const reader = new FileReader();
@@ -2192,8 +2506,10 @@ function handleExcelUpload(event) {
         const sel = document.getElementById('colorwaySelect');
         sel.innerHTML = cwKeys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
         document.getElementById('colorwayBox').classList.remove('hidden');
-        document.getElementById('excelZone').classList.add('loaded');
-        document.getElementById('excelStatus').innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Color JACJI siap)';
+        const isRei = (buyerTag === 'REI');
+        document.getElementById(isRei ? 'reiExcelZone' : 'excelZone')?.classList.add('loaded');
+        const stEl = document.getElementById(isRei ? 'reiExcelStatus' : 'excelStatus');
+        if (stEl) stEl.innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Color ' + (isRei ? 'REI' : 'JanSport') + ' siap)';
         applyColorwayMapping();
       } else {
         alert("Tidak ditemukan tabel komponen fabric (VAI/FAB) pada file JACJI ini.");
@@ -2820,7 +3136,7 @@ function buildEditableVectorPdf() {
       const finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
       const centerDrawX = finalX + finalW / 2;
 
-      const numCx = Math.max(cx + circleR + 3, finalX - circleR - 5), numCy = Math.max(cy + circleR + 6, finalY + circleR);
+      const { numCx, numCy } = calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR);
       doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.8 * sx); doc.circle(numCx * sx, numCy * sy, circleR * sx, 'S');
       doc.setFont(pdfFont, 'bold'); doc.setFontSize(pxToPt(Math.round(circleR * (String(fabNum).length >= 4 ? 0.76 : 0.90)))); doc.setTextColor(0, 0, 0);
       doc.text(String(fabNum), numCx * sx, (numCy + Math.round(circleR * 0.35)) * sy, { align: 'center' });
@@ -2847,7 +3163,7 @@ function buildEditableVectorPdf() {
 
       (piece.polygons || []).forEach(poly => {
         const pts = poly.pts || []; if (pts.length < 2) return;
-        doc.setDrawColor(poly.isOuter ? 0 : 100, poly.isOuter ? 0 : 116, poly.isOuter ? 0 : 139); doc.setLineWidth((poly.isOuter ? 2.1 : 0.9) * sx);
+        doc.setDrawColor(poly.isOuter ? 0 : 100, poly.isOuter ? 85 : 116, poly.isOuter ? 255 : 139); doc.setLineWidth((poly.isOuter ? 2.1 : 0.9) * sx);
         const mapped = pts.map(pt => [(finalX + (piece.autoRotate90 ? (piece.height - pt.y) : pt.x) * pairScale) * sx, (finalY + (piece.autoRotate90 ? pt.x : pt.y) * pairScale) * sy]);
         for (let i = 0; i < mapped.length - 1; i++) { const p1 = mapped.at(i), p2 = mapped.at(i + 1); doc.line(p1.at(0), p1.at(1), p2.at(0), p2.at(1)); }
         if (poly.isOuter && mapped.length > 2) { const pLast = mapped.at(-1), pFirst = mapped.at(0); doc.line(pLast.at(0), pLast.at(1), pFirst.at(0), pFirst.at(1)); }
@@ -2888,6 +3204,100 @@ window.exportAllPDF = async function() {
   if (saved) alert("✅ Vector PDF (Editable di Foxit) disimpan ke: " + saved);
 };
 
+
+function buildCorelEditableSvg() {
+  generateMiniMarker();
+  const c = (Array.isArray(generatedCanvases) && generatedCanvases.length > 0) ? generatedCanvases.at(0) : null;
+  const W = c ? c.width : 1400, H = c ? c.height : 990;
+  const esc = s => String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const titleSize = parseInt(document.getElementById('titleFontSize')?.value) || 38;
+  const labelSize = parseInt(document.getElementById('labelFontSize')?.value) || 14;
+  const procSize = parseInt(document.getElementById('processFontSize')?.value) || 13;
+  const fabSize = parseInt(document.getElementById('fabricFontSize')?.value) || 14;
+  const customCols = document.getElementById('colsSelect')?.value || 'auto';
+  const customRows = document.getElementById('rowsSelect')?.value || 'auto';
+  const orderVal = (document.getElementById('orderNoInput')?.value || '').trim().toUpperCase();
+  const titleText = currentStyleName + (currentColorwayName ? ' (' + currentColorwayName + ')' : '');
+
+  const jacji = (typeof excelColorways !== 'undefined' && currentColorwayName && excelColorways[currentColorwayName]) ? excelColorways[currentColorwayName] : null;
+  const bomSpecs = jacji ? (jacji.specs || {}) : {};
+  const bomFabSeq = [];
+  if (jacji && Array.isArray(jacji.pieces)) jacji.pieces.forEach(bp => { if (bp.fabric && !bomFabSeq.includes(bp.fabric)) bomFabSeq.push(bp.fabric); });
+  const activeFabrics = [...new Set([...bomFabSeq, 'MA', 'T1', 'T2', 'T3', 'L2', 'N1'])].filter(f => parsedPieces.some(p => p.fabric === f));
+  const fabricNumberMap = {}; activeFabrics.forEach((f, idx) => { fabricNumberMap[f] = idx + 1; });
+  const sortedPieces = [...parsedPieces].sort((a, b) => {
+    const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
+    if (fDiff !== 0) return fDiff;
+    const oA = typeof a.bomOrder === 'number' ? a.bomOrder : 9999, oB = typeof b.bomOrder === 'number' ? b.bomOrder : 9999;
+    return oA !== oB ? oA - oB : (a.id || 0) - (b.id || 0);
+  });
+  const subCounters = {};
+  sortedPieces.forEach(p => { const fn = fabricNumberMap[p.fabric] || 1; subCounters[fn] = (subCounters[fn] || 0) + 1; p.itemNumberLabel = fn + '.' + subCounters[fn]; });
+
+  const footerEntries = activeFabrics.map(fab => {
+    const num = fabricNumberMap[fab], cnt = sortedPieces.filter(p => p.fabric === fab).length;
+    const specText = (bomSpecs[fab] || fab).replace(/\bWIDTH\s*VAI\b|\bWIDTH\b|\bVAI\b/gi, '').replace(/\s+/g, ' ').trim();
+    return num + '. ' + specText + ' (' + cnt + ' KOMPONEN)';
+  });
+  const fabLineH = Math.max(Math.round(fabSize * 1.32), 20);
+  const footerH = Math.round((fabSize + 2) * 1.5) + (footerEntries.length * fabLineH) + 14;
+  const boxX = 36, boxY = 20 + Math.round(titleSize * 1.15) + (orderVal ? Math.max(labelSize + 14, 24) : 10);
+  const boxW = W - 72, boxH = Math.max(220, H - boxY - footerH - 18);
+
+  const dynLayout = computeDynamicGridLayout(sortedPieces, customCols, customRows, boxW - 24, boxH - 18, labelSize);
+  const cols = dynLayout.cols, rowsPerPage = dynLayout.rowsPerPage, pageItems = dynLayout.pages.at(0) || [];
+  const baseCellW = (boxW - 24) / cols, baseCellH = (boxH - 18) / rowsPerPage;
+
+  let globalScale = Infinity;
+  pageItems.forEach(item => {
+    const p = item.piece, cw = baseCellW * (item.colSpan || 1), ch = baseCellH * (item.rowSpan || 1);
+    const ew = p.autoRotate90 ? p.height : p.width, eh = p.autoRotate90 ? p.width : p.height;
+    const sc = Math.min(Math.max(cw - 48, 24) / Math.max(ew, 1), Math.max(ch - Math.round(labelSize * 3.0) - 34, 24) / Math.max(eh, 1));
+    if (sc < globalScale) globalScale = sc;
+  });
+  if (!isFinite(globalScale) || globalScale <= 0) globalScale = 1;
+
+  let out = ['<?xml version="1.0" encoding="UTF-8"?>', '<svg xmlns="http://w3.org" width="297mm" height="210mm" viewBox="0 0 ' + W + ' ' + H + '">', '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#ffffff"/>'];
+  out.push('<text x="' + (W / 2) + '" y="' + (20 + Math.round(titleSize * 0.85)) + '" font-family="Arial, sans-serif" font-size="' + titleSize + '" font-weight="bold" text-anchor="middle" fill="#000000">' + esc(titleText) + '</text>');
+  if (orderVal) out.push('<text x="' + boxX + '" y="' + (boxY - 8) + '" font-family="Arial, sans-serif" font-size="' + (labelSize + 3) + '" font-weight="bold" fill="#000000">' + esc(orderVal) + '</text>');
+  out.push('<rect x="' + boxX + '" y="' + boxY + '" width="' + boxW + '" height="' + boxH + '" fill="none" stroke="#000000" stroke-width="2.5"/>');
+
+  pageItems.forEach(item => {
+    const p = item.piece, cx = boxX + 12 + item.col * baseCellW, cy = boxY + 9 + item.row * baseCellH;
+    const cellW = baseCellW * (item.colSpan || 1), cellH = baseCellH * (item.rowSpan || 1);
+    const circleR = Math.max(12, Math.min(20, Math.round(labelSize * 1.15)));
+    const topSpace = p.processLabel ? Math.max(procSize + 10, 22) : 14, bottomSpace = Math.round(labelSize * 3.0) + 16;
+    const leftOffset = (circleR * 2) + 8, rightSpace = p.qtyLabel ? 34 : 10;
+    const maxDrawW = Math.max(cellW - leftOffset - rightSpace, 24), maxDrawH = Math.max(cellH - topSpace - bottomSpace, 24);
+    const ew = p.autoRotate90 ? p.height : p.width, eh = p.autoRotate90 ? p.width : p.height;
+    const sc = Math.min(globalScale, p.maxAllowedScale || globalScale), finalW = ew * sc, finalH = eh * sc;
+    const finalX = cx + leftOffset + (maxDrawW - finalW) / 2, finalY = cy + topSpace + (maxDrawH - finalH) / 2;
+    const pos = calcSmartCirclePos(p, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR);
+
+    out.push('<g id="piece_' + esc(p.itemNumberLabel) + '">');
+    out.push('<circle cx="' + pos.numCx.toFixed(1) + '" cy="' + pos.numCy.toFixed(1) + '" r="' + circleR + '" fill="none" stroke="#000000" stroke-width="1.8"/>');
+    out.push('<text x="' + pos.numCx.toFixed(1) + '" y="' + (pos.numCy + circleR * 0.35).toFixed(1) + '" font-family="Arial, sans-serif" font-size="' + Math.round(circleR * 0.85) + '" font-weight="bold" text-anchor="middle" fill="#000000">' + esc(p.itemNumberLabel) + '</text>');
+    if (p.processLabel) out.push('<text x="' + ((pos.numCx + circleR + 6 + cx + cellW - 4) / 2).toFixed(1) + '" y="' + (cy + Math.max(procSize, 10) + 3) + '" font-family="Arial, sans-serif" font-size="' + Math.max(procSize, 9) + '" font-weight="bold" text-anchor="middle" fill="#d90429">' + esc(p.processLabel.toUpperCase()) + '</text>');
+    if (Array.isArray(p.polygons)) {
+      p.polygons.forEach(poly => {
+        if (!poly.pts || poly.pts.length < 2) return;
+        const ptsStr = poly.pts.map(pt => ((finalX + (p.autoRotate90 ? pt.y : pt.x) * sc).toFixed(2) + ',' + (finalY + (p.autoRotate90 ? pt.x : pt.y) * sc).toFixed(2))).join(' ');
+        out.push('<' + (poly.isOuter ? 'polygon' : 'polyline') + ' points="' + ptsStr + '" fill="none" stroke="' + (poly.isOuter ? '#0055ff' : '#64748b') + '" stroke-width="' + (poly.isOuter ? '2.1' : '0.9') + '"/>');
+      });
+    }
+    const textX = (finalX + finalW / 2).toFixed(1), py1 = (finalY + finalH + labelSize + 4).toFixed(1);
+    out.push('<text x="' + textX + '" y="' + py1 + '" font-family="Arial, sans-serif" font-size="' + labelSize + '" font-weight="bold" text-anchor="middle" fill="#000000">' + esc(p.sizeText) + '</text>');
+    out.push('<text x="' + textX + '" y="' + (Number(py1) + labelSize + 2).toFixed(1) + '" font-family="Arial, sans-serif" font-size="' + Math.max(labelSize - 2, 8) + '" text-anchor="middle" fill="#000000">' + esc(p.name) + '</text></g>');
+  });
+
+  let fy = boxY + boxH + Math.round((fabSize + 2) * 1.2) + 4;
+  out.push('<text x="' + boxX + '" y="' + fy + '" font-family="Arial, sans-serif" font-size="' + (fabSize + 2) + '" font-weight="bold" fill="#000000">KETERANGAN :</text>');
+  fy += fabLineH;
+  footerEntries.forEach(line => { out.push('<text x="' + boxX + '" y="' + fy + '" font-family="Arial, sans-serif" font-size="' + fabSize + '" fill="#000000">' + esc(line) + '</text>'); fy += fabLineH; });
+  out.push('</svg>');
+  return out.join('\n');
+}
+
 window.saveAllColorwaysBatch = async function(format) {
   if (!format) { openExportFormatModal(); return; }
   try {
@@ -2910,6 +3320,8 @@ window.saveAllColorwaysBatch = async function(format) {
           folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + (generatedCanvases.length > 1 ? '_Hal' + (i + 1) : '') + '.png', b64, { base64: true });
         }
         generatedCanvases.forEach(c => { c.width = 1; c.height = 1; }); generatedCanvases = [];
+      } else if (format === 'corel') {
+        folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + '_CorelDRAW.svg', buildCorelEditableSvg());
       } else {
         const pdfB64 = buildEditableVectorPdf().output('datauristring').split(',').at(1);
         folder.file('MiniMarker_' + currentStyleName + '_' + safeCw + '.pdf', pdfB64, { base64: true });
@@ -3299,3 +3711,137 @@ if (typeof openFullPreview === "function" && !window._wrappedFsClickEdit) {
     }
   }, { passive: true });
 })();
+
+// === PARSER KHUSUS JACJI LULULEMON (CONSUMPTION REG DTL2) ===
+function handleLululemonExcelUpload(event) {
+  window._activeJacjiBuyer = 'LULULEMON';
+  window._activeJacjiBuyer = 'LULULEMON';
+  const file = event.target.files && event.target.files.item(0);
+  if (!file) return;
+  const isCsv = /\.csv$/i.test(file.name);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const workbook = isCsv
+        ? XLSX.read(e.target.result, { type: 'string' })
+        : XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+
+      excelColorways = {};
+      const validFabRegex = /^(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)(?:$|[^A-Z0-9])/i;
+      const normFab = (cat) => {
+        const m = String(cat || '').trim().toUpperCase().match(/^(MA|T1|T2|T3|L1|L2|M1|M2|C1|N1|SP)/);
+        if (!m) return '';
+        if (m.at(1) === 'L1') return 'L2';
+        if (m.at(1) === 'C1') return 'M1';
+        return m.at(1);
+      };
+
+      workbook.SheetNames.forEach(sheetName => {
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '' });
+        let curBuyer = '', curModel = '', curCw = '', hdr = null;
+
+        rows.forEach(rawRow => {
+          const cells = rawRow.map(c => String(c || '').trim());
+          if (!cells.join('').trim()) return;
+
+          cells.forEach(c => {
+            if (/^BUYER\s*NAME\s*:/i.test(c)) curBuyer = c.replace(/^BUYER\s*NAME\s*:/i, '').trim();
+            if (/^MODEL\s*NO\s*:/i.test(c)) {
+              curModel = c.replace(/^MODEL\s*NO\s*:/i, '').trim();
+              const styleIn = document.getElementById('styleNoInput');
+              if (styleIn && !styleIn.value) styleIn.value = curModel.split('_').at(0);
+            }
+            if (/^COLORWAY\s*:/i.test(c)) {
+              curCw = c.replace(/^COLORWAY\s*:/i, '').trim();
+              hdr = null;
+            }
+          });
+
+          const idxAnnot = cells.findIndex(c => /ANNOTATION/i.test(c));
+          const idxCat = cells.findIndex(c => /^CATEGORY$/i.test(c));
+          const idxSize = cells.findIndex(c => /^SIZE$/i.test(c));
+          if (idxAnnot !== -1 && idxCat !== -1 && idxSize !== -1) {
+            hdr = {
+              no: cells.findIndex(c => /^NO\.?$/i.test(c)),
+              annot: idxAnnot,
+              cat: idxCat,
+              qty: cells.findIndex(c => /^QTY$/i.test(c)),
+              size: idxSize,
+              mat: cells.findIndex(c => /^MATERIAL/i.test(c)),
+              spec: cells.findIndex(c => /^SPEC$/i.test(c)),
+              color: idxSize + 4
+            };
+            return;
+          }
+
+          if (!hdr) return;
+          const noVal = hdr.no !== -1 ? cells.at(hdr.no) : '';
+          if (!/^[0-9]+$/.test(noVal)) return;
+
+          const catRaw = cells.at(hdr.cat) || '';
+          if (!validFabRegex.test(catRaw)) return;
+          const fab = normFab(catRaw);
+          if (!fab) return;
+
+          const annotRaw = cells.at(hdr.annot) || '';
+          const sizeRaw = (cells.at(hdr.size) || '').replace(/[xX]/g, '*');
+          const qtyNum = parseInt(cells.at(hdr.qty)) || 1;
+          const matName = hdr.mat !== -1 ? (cells.at(hdr.mat) || '') : '';
+          const specName = hdr.spec !== -1 ? (cells.at(hdr.spec) || '') : '';
+          const rowColor = (hdr.color < cells.length ? (cells.at(hdr.color) || '') : '').trim().toUpperCase();
+
+          const cwLabel = (curCw || rowColor || curBuyer || 'LULULEMON-DEFAULT').toUpperCase();
+          if (!excelColorways[cwLabel]) {
+            excelColorways[cwLabel] = {
+              cleanColor: cwLabel,
+              sheetName: curModel ? curModel.split('_').at(0) : sheetName,
+              fabricSpecs: {},
+              pieces: []
+            };
+          }
+
+          if (matName && matName !== '_') {
+            const cSuffix = (rowColor && rowColor !== '_') ? ' (' + rowColor + ')' : '';
+            excelColorways[cwLabel].fabricSpecs[fab] = (matName + ' ' + specName + cSuffix).replace(/\s+/g, ' ').trim();
+          }
+
+          const dashParts = annotRaw.split('-').map(s => s.trim()).filter(Boolean);
+          let shortCode = dashParts.at(0) || annotRaw;
+          if (dashParts.length >= 2 && /^(BK|T|B|K|GUS)$/i.test(dashParts.at(1))) {
+            shortCode = dashParts.at(0) + '-' + dashParts.at(1);
+          }
+          const cleanName = dashParts.length > 1 ? dashParts.slice(1).join(' ') : annotRaw;
+          const codes = [...new Set([shortCode.toUpperCase(), (dashParts.at(0) || '').toUpperCase(), annotRaw.toUpperCase()].filter(Boolean))];
+
+          excelColorways[cwLabel].pieces.push({
+            fabric: fab,
+            name: cleanName.toUpperCase(),
+            raw: annotRaw.toUpperCase(),
+            codes,
+            size: sizeRaw,
+            qty: qtyNum
+          });
+        });
+      });
+
+      const cwKeys = Object.keys(excelColorways).filter(k => excelColorways[k].pieces.length > 0);
+      if (cwKeys.length > 0) {
+        bomTemplates = JSON.parse(JSON.stringify(excelColorways));
+        const sel = document.getElementById('colorwaySelect');
+        sel.innerHTML = cwKeys.map(k => '<option value="' + k + '">' + excelColorways[k].cleanColor + ' (' + excelColorways[k].sheetName + ')</option>').join('');
+        document.getElementById('colorwayBox').classList.remove('hidden');
+        document.getElementById('luluExcelZone')?.classList.add('loaded');
+        const stEl = document.getElementById('luluExcelStatus');
+        if (stEl) stEl.innerHTML = '✅ <strong>' + file.name + '</strong> (' + cwKeys.length + ' Color Lululemon siap)';
+        if (typeof applyColorwayMapping === 'function') applyColorwayMapping();
+      } else {
+        alert('Format Lululemon tidak terbaca. Pastikan file berisi kolom Annotation(ENG) dan Category.');
+      }
+    } catch (err) {
+      alert('Gagal membaca file Lululemon: ' + (err.message || err));
+    }
+  };
+
+  if (isCsv) reader.readAsText(file, 'UTF-8');
+  else reader.readAsArrayBuffer(file);
+}
