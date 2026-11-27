@@ -1869,88 +1869,7 @@ function adjustPreviewZoom(d) { fsZoom(d); }
 function rotatePreviewCanvas() { fsRotate(); }
 function resetPreviewTransform() { fsReset(); }
 
-(function initFsTouch() {
-  const vp = document.getElementById('fsViewport');
-  if (!vp) return;
-  let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1, pinching = false;
-  let isLongPressPan = false, pressTimer = null, mouseDragging = false;
-  const clearPressTimer = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
 
-  vp.addEventListener('touchstart', e => {
-    clearPressTimer();
-    isLongPressPan = false;
-    if (e.touches.length === 2) {
-      pinching = true;
-      initDist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY);
-      initSc = fsScale;
-    } else if (e.touches.length === 1) {
-      pinching = false;
-      sx = e.touches.item(0).clientX;
-      sy = e.touches.item(0).clientY;
-      lx = fsX;
-      ly = fsY;
-      pressTimer = setTimeout(() => {
-        isLongPressPan = true;
-        vp.style.cursor = 'grabbing';
-        if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
-      }, 140);
-    }
-  }, { passive: false });
-
-  vp.addEventListener('touchmove', e => {
-    e.preventDefault();
-    if (e.touches.length === 2 && initDist > 0) {
-      clearPressTimer();
-      const dist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY);
-      fsScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
-      applyFsTransform();
-    } else if (e.touches.length === 1 && !pinching) {
-      const dx = e.touches.item(0).clientX - sx;
-      const dy = e.touches.item(0).clientY - sy;
-      if (!isLongPressPan && Math.hypot(dx, dy) > 35 && fsScale <= 1) {
-        clearPressTimer();
-      }
-      if (isLongPressPan || fsScale > 1) {
-        clearPressTimer();
-        isLongPressPan = true;
-        fsX = lx + dx;
-        fsY = ly + dy;
-        applyFsTransform();
-      }
-    }
-  }, { passive: false });
-
-  vp.addEventListener('touchend', e => {
-    clearPressTimer();
-    vp.style.cursor = 'grab';
-    if (isLongPressPan) {
-      isLongPressPan = false;
-      return;
-    }
-    if (!pinching && fsScale === 1 && e.changedTouches.length === 1) {
-      const dx = e.changedTouches.item(0).clientX - sx;
-      if (Math.abs(dx) > 55 && typeof navigateColorway === 'function') {
-        navigateColorway(dx < 0 ? 1 : -1);
-      }
-    }
-  });
-
-  vp.addEventListener('touchcancel', () => { clearPressTimer(); isLongPressPan = false; vp.style.cursor = 'grab'; });
-
-  vp.style.cursor = 'grab';
-  vp.addEventListener('mousedown', e => {
-    if (e.button !== 0) return;
-    sx = e.clientX; sy = e.clientY; lx = fsX; ly = fsY;
-    pressTimer = setTimeout(() => { mouseDragging = true; vp.style.cursor = 'grabbing'; }, 120);
-  });
-  window.addEventListener('mousemove', e => {
-    if (!mouseDragging) return;
-    fsX = lx + (e.clientX - sx);
-    fsY = ly + (e.clientY - sy);
-    applyFsTransform();
-  });
-  window.addEventListener('mouseup', () => { clearPressTimer(); mouseDragging = false; vp.style.cursor = 'grab'; });
-})();
 
 renderHistory();
 
@@ -4036,112 +3955,102 @@ function handleLululemonExcelUpload(event) {
   else reader.readAsArrayBuffer(file);
 }
 
-(function enableCaptureLongPressPan() {
-  const vp = document.getElementById('fsViewport');
-  if (!vp || vp.dataset.capturePanReady) return;
-  vp.dataset.capturePanReady = '1';
-  let activeId = null, sx = 0, sy = 0, lx = 0, ly = 0, panning = false, timer = null;
 
-  vp.addEventListener('pointerdown', function(e) {
-    if (!e.isPrimary) return;
-    if (timer) { clearTimeout(timer); timer = null; }
-    panning = false;
-    activeId = e.pointerId;
-    sx = e.clientX;
-    sy = e.clientY;
-    lx = typeof fsX === 'number' ? fsX : 0;
-    ly = typeof fsY === 'number' ? fsY : 0;
 
-    timer = setTimeout(function() {
-      panning = true;
-      vp.style.cursor = 'grabbing';
-      try { vp.setPointerCapture(activeId); } catch (_) {}
-      if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
-    }, 140);
-  }, true);
 
-  vp.addEventListener('pointermove', function(e) {
-    if (e.pointerId !== activeId) return;
-    const dx = e.clientX - sx;
-    const dy = e.clientY - sy;
-    if (!panning) {
-      if (Math.hypot(dx, dy) > 35) {
-        if (timer) { clearTimeout(timer); timer = null; }
-      }
-      return;
-    }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    fsX = lx + dx;
-    fsY = ly + dy;
-    if (typeof applyFsTransform === 'function') applyFsTransform();
-  }, true);
 
-  const stopPan = function(e) {
-    if (timer) { clearTimeout(timer); timer = null; }
-    if (panning) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      panning = false;
-      vp.style.cursor = 'grab';
-      try { vp.releasePointerCapture(activeId); } catch (_) {}
-    }
-    activeId = null;
-  };
 
-  vp.addEventListener('pointerup', stopPan, true);
-  vp.addEventListener('pointercancel', stopPan, true);
-})();
-
-(function forceLongPressDragPreview() {
+(function unifiedPreviewController() {
   const style = document.createElement('style');
-  style.textContent = '#fsViewport, #fsViewport * { touch-action: none !important; user-select: none !important; -webkit-user-select: none !important; }';
+  style.textContent = '#fsViewport, #fsViewport * { touch-action: none !important; user-select: none !important; -webkit-user-select: none !important; -webkit-touch-callout: none !important; }';
   document.head.appendChild(style);
 
-  let sx = 0, sy = 0, lx = 0, ly = 0, isDragging = false, timer = null;
+  let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1;
+  let pinching = false, isDragging = false, timer = null;
+
+  // Matikan menu klik kanan / tekan lama bawaan browser di area preview agar tidak berkedip
+  document.addEventListener('contextmenu', function(e) {
+    const vp = document.getElementById('fsViewport');
+    if (vp && vp.contains(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
 
   document.addEventListener('touchstart', function(e) {
     const vp = document.getElementById('fsViewport');
     if (!vp || !vp.contains(e.target)) return;
     if (timer) { clearTimeout(timer); timer = null; }
     isDragging = false;
-    if (e.touches.length !== 1) return;
 
-    sx = e.touches.item(0).clientX;
-    sy = e.touches.item(0).clientY;
-    lx = typeof fsX === 'number' ? fsX : 0;
-    ly = typeof fsY === 'number' ? fsY : 0;
+    if (e.touches.length === 2) {
+      pinching = true;
+      initDist = Math.hypot(
+        e.touches.item(1).clientX - e.touches.item(0).clientX,
+        e.touches.item(1).clientY - e.touches.item(0).clientY
+      );
+      initSc = typeof fsScale === 'number' ? fsScale : 1;
+    } else if (e.touches.length === 1) {
+      pinching = false;
+      sx = e.touches.item(0).clientX;
+      sy = e.touches.item(0).clientY;
+      lx = typeof fsX === 'number' ? fsX : 0;
+      ly = typeof fsY === 'number' ? fsY : 0;
 
-    timer = setTimeout(function() {
-      isDragging = true;
-      const h = document.getElementById('fsCanvasHolder');
-      if (h) h.style.outline = '2px solid #00f5d4';
-      if (navigator.vibrate) try { navigator.vibrate(30); } catch (_) {}
-    }, 150);
+      timer = setTimeout(function() {
+        isDragging = true;
+        const h = document.getElementById('fsCanvasHolder');
+        if (h) h.style.outline = '2px solid #00f5d4';
+        if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
+      }, 150);
+    }
   }, { capture: true, passive: false });
 
   document.addEventListener('touchmove', function(e) {
     const vp = document.getElementById('fsViewport');
-    if (!vp || !vp.contains(e.target) || e.touches.length !== 1) return;
-    if (!isDragging) return;
+    if (!vp || !vp.contains(e.target)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    fsX = lx + (e.touches.item(0).clientX - sx);
-    fsY = ly + (e.touches.item(0).clientY - sy);
-    if (typeof applyFsTransform === 'function') applyFsTransform();
+
+    if (e.touches.length === 2 && initDist > 0) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      const dist = Math.hypot(
+        e.touches.item(1).clientX - e.touches.item(0).clientX,
+        e.touches.item(1).clientY - e.touches.item(0).clientY
+      );
+      fsScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
+      if (typeof applyFsTransform === 'function') applyFsTransform();
+    } else if (e.touches.length === 1 && !pinching) {
+      const dx = e.touches.item(0).clientX - sx;
+      const dy = e.touches.item(0).clientY - sy;
+      if (isDragging || (typeof fsScale === 'number' && fsScale > 1)) {
+        if (timer) { clearTimeout(timer); timer = null; }
+        isDragging = true;
+        fsX = lx + dx;
+        fsY = ly + dy;
+        if (typeof applyFsTransform === 'function') applyFsTransform();
+      }
+    }
   }, { capture: true, passive: false });
 
-  const endDrag = function(e) {
+  document.addEventListener('touchend', function(e) {
+    const vp = document.getElementById('fsViewport');
+    if (!vp || !vp.contains(e.target)) return;
     if (timer) { clearTimeout(timer); timer = null; }
+    const h = document.getElementById('fsCanvasHolder');
+    if (h) h.style.outline = 'none';
+
     if (isDragging) {
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
       isDragging = false;
-      const h = document.getElementById('fsCanvasHolder');
-      if (h) h.style.outline = 'none';
+      return;
     }
-  };
-
-  document.addEventListener('touchend', endDrag, { capture: true, passive: false });
-  document.addEventListener('touchcancel', endDrag, { capture: true, passive: false });
+    if (!pinching && (typeof fsScale !== 'number' || fsScale === 1) && e.changedTouches.length === 1) {
+      const dx = e.changedTouches.item(0).clientX - sx;
+      if (Math.abs(dx) > 65 && typeof navigateColorway === 'function') {
+        navigateColorway(dx < 0 ? 1 : -1);
+      }
+    }
+  }, { capture: true, passive: false });
 })();
