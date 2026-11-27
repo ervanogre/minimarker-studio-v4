@@ -1861,7 +1861,7 @@ function applyFsTransform() {
   h.style.transform = `translate(${fsX}px, ${fsY}px) rotate(${fsAngle}deg) scale(${fsScale * boost})`;
   if (l) l.textContent = Math.round(fsScale * 100) + '%';
 }
-function fsZoom(d) { fsScale = Math.min(Math.max(fsScale + d, 1), 4); if (fsScale === 1) { fsX = 0; fsY = 0; } applyFsTransform(); }
+function fsZoom(d) { fsScale = Math.min(Math.max(fsScale + d, 1), 4); applyFsTransform(); }
 function fsRotate() { fsAngle = (fsAngle + 90) % 360; fsX = 0; fsY = 0; applyFsTransform(); }
 function fsReset() { fsScale = 1; fsAngle = 0; fsX = 0; fsY = 0; applyFsTransform(); }
 function adjustPreviewZoom(d) { fsZoom(d); }
@@ -1872,16 +1872,75 @@ function resetPreviewTransform() { fsReset(); }
   const vp = document.getElementById('fsViewport');
   if (!vp) return;
   let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1, pinching = false;
+  let isLongPressPan = false, pressTimer = null, mouseDragging = false;
+  const clearPressTimer = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+
   vp.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) { pinching = true; initDist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY); initSc = fsScale; }
-    else if (e.touches.length === 1) { pinching = false; sx = e.touches.item(0).clientX; sy = e.touches.item(0).clientY; lx = fsX; ly = fsY; }
+    clearPressTimer();
+    isLongPressPan = false;
+    if (e.touches.length === 2) {
+      pinching = true;
+      initDist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY);
+      initSc = fsScale;
+    } else if (e.touches.length === 1) {
+      pinching = false;
+      sx = e.touches.item(0).clientX;
+      sy = e.touches.item(0).clientY;
+      lx = fsX;
+      ly = fsY;
+      // Tekan lama 220ms mengaktifkan mode geser gambar pada skala berapapun
+      pressTimer = setTimeout(() => {
+        isLongPressPan = true;
+        vp.style.cursor = 'grabbing';
+        if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
+      }, 220);
+    }
   }, { passive: false });
+
   vp.addEventListener('touchmove', e => {
     e.preventDefault();
-    if (e.touches.length === 2 && initDist > 0) { const dist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY); fsScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4); applyFsTransform(); }
-    else if (e.touches.length === 1 && !pinching && fsScale > 1) { fsX = lx + (e.touches.item(0).clientX - sx); fsY = ly + (e.touches.item(0).clientY - sy); applyFsTransform(); }
+    if (e.touches.length === 2 && initDist > 0) {
+      clearPressTimer();
+      const dist = Math.hypot(e.touches.item(1).clientX - e.touches.item(0).clientX, e.touches.item(1).clientY - e.touches.item(0).clientY);
+      fsScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
+      applyFsTransform();
+    } else if (e.touches.length === 1 && !pinching) {
+      const dx = e.touches.item(0).clientX - sx;
+      const dy = e.touches.item(0).clientY - sy;
+      // Jika digeser jauh sebelum 220ms saat zoom, langsung geser; jika tidak, tunggu tekan lama aktif
+      if (!isLongPressPan && Math.hypot(dx, dy) > 14 && fsScale <= 1) {
+        clearPressTimer();
+      }
+      if (isLongPressPan || fsScale > 1) {
+        clearPressTimer();
+        isLongPressPan = true;
+        fsX = lx + dx;
+        fsY = ly + dy;
+        applyFsTransform();
+      }
+    }
   }, { passive: false });
+
+  vp.addEventListener('touchcancel', () => { clearPressTimer(); isLongPressPan = false; vp.style.cursor = 'grab'; });
+
+  // Dukungan tekan lama / tahan klik mouse untuk geser gambar di PC
+  vp.style.cursor = 'grab';
+  vp.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    sx = e.clientX; sy = e.clientY; lx = fsX; ly = fsY;
+    pressTimer = setTimeout(() => { mouseDragging = true; vp.style.cursor = 'grabbing'; }, 180);
+  });
+  window.addEventListener('mousemove', e => {
+    if (!mouseDragging) return;
+    fsX = lx + (e.clientX - sx);
+    fsY = ly + (e.clientY - sy);
+    applyFsTransform();
+  });
+  window.addEventListener('mouseup', () => { clearPressTimer(); mouseDragging = false; vp.style.cursor = 'grab'; });
   vp.addEventListener('touchend', e => {
+    clearPressTimer();
+    vp.style.cursor = 'grab';
+    if (isLongPressPan) { isLongPressPan = false; return; }
     if (!pinching && fsScale === 1 && e.changedTouches.length === 1) {
       const dx = e.changedTouches.item(0).clientX - sx, dy = e.changedTouches.item(0).clientY - sy;
       if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) navigateColorway(dx < 0 ? 1 : -1);
