@@ -3962,13 +3962,29 @@ function handleLululemonExcelUpload(event) {
 
 
 
-(function unifiedPreviewController() {
-  const style = document.createElement('style');
-  style.textContent = '#fsViewport, #fsViewport * { touch-action: none !important; user-select: none !important; -webkit-user-select: none !important; -webkit-touch-callout: none !important; }';
-  document.head.appendChild(style);
 
-  let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1;
-  let pinching = false, isDragging = false, wasDragged = false, timer = null;
+(function previewPanModeController() {
+  window._previewPanMode = false;
+
+  window.togglePreviewPanMode = function() {
+    window._previewPanMode = !window._previewPanMode;
+    const btn = document.getElementById('fsModeToggleBtn');
+    const holder = document.getElementById('fsCanvasHolder');
+    if (btn) {
+      if (window._previewPanMode) {
+        btn.innerHTML = '✋ MODE GESER';
+        btn.style.background = 'var(--neon-cyan)';
+        btn.style.color = '#07060e';
+      } else {
+        btn.innerHTML = '✏️ MODE EDIT';
+        btn.style.background = '#07060e';
+        btn.style.color = 'var(--neon-cyan)';
+      }
+    }
+    if (holder) {
+      holder.style.outline = window._previewPanMode ? '2px solid var(--neon-cyan)' : 'none';
+    }
+  };
 
   function applyDirectTransform(vp) {
     const h = document.getElementById('fsCanvasHolder');
@@ -3985,7 +4001,6 @@ function handleLululemonExcelUpload(event) {
     try { fsX = px; fsY = py; fsScale = sc; } catch (_) {}
   }
 
-  // Reset posisi saat tombol Reset, Zoom, Rotate, atau Buka Preview dipakai
   const origOpen = window.openFullPreview;
   if (typeof origOpen === 'function') {
     window.openFullPreview = function() {
@@ -4023,27 +4038,20 @@ function handleLululemonExcelUpload(event) {
     };
   }
 
-  document.addEventListener('contextmenu', function(e) {
-    const vp = document.getElementById('fsViewport');
-    if (vp && vp.contains(e.target)) { e.preventDefault(); e.stopPropagation(); }
-  }, true);
-
-  // Blokir event click setelah selesai menggeser agar layar tidak berkedip atau membuka edit
+  // Blokir edit pola jika sedang di Mode Geser
   document.addEventListener('click', function(e) {
     const vp = document.getElementById('fsViewport');
-    if (vp && vp.contains(e.target) && wasDragged) {
+    if (vp && vp.contains(e.target) && window._previewPanMode) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      wasDragged = false; window._previewWasDragged = false;
     }
   }, true);
+
+  let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1, pinching = false, dragging = false;
 
   document.addEventListener('touchstart', function(e) {
     const vp = document.getElementById('fsViewport');
     if (!vp || !vp.contains(e.target)) return;
-    if (timer) { clearTimeout(timer); timer = null; }
-    isDragging = false;
-    wasDragged = false; window._previewWasDragged = false;
     if (typeof vp._panX !== 'number') vp._panX = 0;
     if (typeof vp._panY !== 'number') vp._panY = 0;
     if (typeof vp._panScale !== 'number') vp._panScale = 1;
@@ -4061,57 +4069,42 @@ function handleLululemonExcelUpload(event) {
       sy = e.touches.item(0).clientY;
       lx = vp._panX;
       ly = vp._panY;
-
-      timer = setTimeout(function() {
-        isDragging = true;
-        wasDragged = true; window._previewWasDragged = true;
-        const h = document.getElementById('fsCanvasHolder');
-        if (h) h.style.outline = '2px solid #00f5d4';
-        if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
-      }, 150);
+      if (window._previewPanMode) {
+        dragging = true;
+      }
     }
   }, { capture: true, passive: false });
 
   document.addEventListener('touchmove', function(e) {
     const vp = document.getElementById('fsViewport');
     if (!vp || !vp.contains(e.target)) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
 
     if (e.touches.length === 2 && initDist > 0) {
-      if (timer) { clearTimeout(timer); timer = null; }
+      e.preventDefault();
+      e.stopImmediatePropagation();
       const dist = Math.hypot(
         e.touches.item(1).clientX - e.touches.item(0).clientX,
         e.touches.item(1).clientY - e.touches.item(0).clientY
       );
       vp._panScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
       applyDirectTransform(vp);
-    } else if (e.touches.length === 1 && !pinching) {
-      const dx = e.touches.item(0).clientX - sx;
-      const dy = e.touches.item(0).clientY - sy;
-      if (isDragging || (vp._panScale || 1) > 1) {
-        if (timer) { clearTimeout(timer); timer = null; }
-        isDragging = true;
-        wasDragged = true; window._previewWasDragged = true;
-        vp._panX = lx + dx;
-        vp._panY = ly + dy;
-        applyDirectTransform(vp);
-      }
+    } else if (e.touches.length === 1 && !pinching && (window._previewPanMode || (vp._panScale || 1) > 1)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dragging = true;
+      vp._panX = lx + (e.touches.item(0).clientX - sx);
+      vp._panY = ly + (e.touches.item(0).clientY - sy);
+      applyDirectTransform(vp);
     }
   }, { capture: true, passive: false });
 
   document.addEventListener('touchend', function(e) {
     const vp = document.getElementById('fsViewport');
     if (!vp || !vp.contains(e.target)) return;
-    if (timer) { clearTimeout(timer); timer = null; }
-    const h = document.getElementById('fsCanvasHolder');
-    if (h) h.style.outline = 'none';
-
-    if (isDragging) {
+    if (dragging || window._previewPanMode) {
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
-      isDragging = false;
-      setTimeout(() => { wasDragged = false; window._previewWasDragged = false; }, 120);
+      dragging = false;
       return;
     }
     if (!pinching && (vp._panScale || 1) === 1 && e.changedTouches.length === 1) {
