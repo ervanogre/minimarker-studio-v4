@@ -4035,3 +4035,60 @@ function handleLululemonExcelUpload(event) {
   if (isCsv) reader.readAsText(file, 'UTF-8');
   else reader.readAsArrayBuffer(file);
 }
+
+(function enableCaptureLongPressPan() {
+  const vp = document.getElementById('fsViewport');
+  if (!vp || vp.dataset.capturePanReady) return;
+  vp.dataset.capturePanReady = '1';
+  let activeId = null, sx = 0, sy = 0, lx = 0, ly = 0, panning = false, timer = null;
+
+  vp.addEventListener('pointerdown', function(e) {
+    if (!e.isPrimary) return;
+    if (timer) { clearTimeout(timer); timer = null; }
+    panning = false;
+    activeId = e.pointerId;
+    sx = e.clientX;
+    sy = e.clientY;
+    lx = typeof fsX === 'number' ? fsX : 0;
+    ly = typeof fsY === 'number' ? fsY : 0;
+
+    timer = setTimeout(function() {
+      panning = true;
+      vp.style.cursor = 'grabbing';
+      try { vp.setPointerCapture(activeId); } catch (_) {}
+      if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
+    }, 140);
+  }, true);
+
+  vp.addEventListener('pointermove', function(e) {
+    if (e.pointerId !== activeId) return;
+    const dx = e.clientX - sx;
+    const dy = e.clientY - sy;
+    if (!panning) {
+      if (Math.hypot(dx, dy) > 35) {
+        if (timer) { clearTimeout(timer); timer = null; }
+      }
+      return;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    fsX = lx + dx;
+    fsY = ly + dy;
+    if (typeof applyFsTransform === 'function') applyFsTransform();
+  }, true);
+
+  const stopPan = function(e) {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (panning) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      panning = false;
+      vp.style.cursor = 'grab';
+      try { vp.releasePointerCapture(activeId); } catch (_) {}
+    }
+    activeId = null;
+  };
+
+  vp.addEventListener('pointerup', stopPan, true);
+  vp.addEventListener('pointercancel', stopPan, true);
+})();
