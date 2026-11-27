@@ -1856,6 +1856,7 @@ function openFullPreview() {
 function closeFullPreview() { const m = document.getElementById('fullScreenModal'); m.style.display = 'none'; m.classList.add('hidden'); }
 function applyFsTransform() {
   const h = document.getElementById('fsCanvasHolder'), l = document.getElementById('fsZoomText');
+  if (h) h.style.transition = 'none';
   if (!h) return;
   const boost = (fsAngle % 180 !== 0 && fsScale === 1) ? 1.35 : 1;
   h.style.transform = `translate(${fsX}px, ${fsY}px) rotate(${fsAngle}deg) scale(${fsScale * boost})`;

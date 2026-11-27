@@ -1,4 +1,4 @@
-const CACHE_NAME = 'minimarker-v4-live-v11';
+const CACHE_NAME = 'minimarker-v1795758461';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(
