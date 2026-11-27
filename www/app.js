@@ -1250,37 +1250,48 @@ function calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH
   const effW = piece.autoRotate90 ? piece.height : piece.width;
   const effH = piece.autoRotate90 ? piece.width : piece.height;
   const scale = effW > 0 ? (finalW / effW) : 1;
-  const bandTop = Math.max(cy + circleR + 4, finalY + Math.min(circleR, finalH * 0.25));
-  const yMin = bandTop - circleR - 3;
-  const yMax = bandTop + circleR + 3;
+  const bandTop = Math.max(cy + circleR + 4, finalY + Math.min(circleR + 2, finalH * 0.25));
+  const yMin = bandTop - circleR - 6;
+  const yMax = bandTop + circleR + 6;
 
-  let minPolyX = finalX;
+  let minPolyX = finalX + finalW;
+  let foundAny = false;
   if (Array.isArray(piece.polygons) && piece.polygons.length > 0 && effW > 0) {
-    let foundInBand = Infinity;
     piece.polygons.forEach(poly => {
-      if (!poly.pts) return;
-      poly.pts.forEach(pt => {
-        const rx = (piece.autoRotate90 ? pt.y : pt.x) * scale;
-        const ry = (piece.autoRotate90 ? pt.x : pt.y) * scale;
-        const px = finalX + rx;
-        const py = finalY + ry;
-        if (py >= yMin && py <= yMax && px < foundInBand) {
-          foundInBand = px;
+      if (!poly.pts || poly.pts.length === 0) return;
+      for (let i = 0; i < poly.pts.length; i++) {
+        const p1 = poly.pts.at(i);
+        const p2 = poly.pts.at((i + 1) % poly.pts.length);
+        // Periksa 5 titik sepanjang setiap segmen garis agar lengkungan miring (seperti 1.7 & 4.1) ikut terdeteksi
+        for (let t = 0; t <= 4; t++) {
+          const frac = t / 4;
+          const rawX = p1.x + (p2.x - p1.x) * frac;
+          const rawY = p1.y + (p2.y - p1.y) * frac;
+          const rx = (piece.autoRotate90 ? (piece.height - rawY) : rawX) * scale;
+          const ry = (piece.autoRotate90 ? rawX : rawY) * scale;
+          const px = finalX + rx;
+          const py = finalY + ry;
+          if (py >= yMin && py <= yMax) {
+            if (px < minPolyX) minPolyX = px;
+            foundAny = true;
+          }
         }
-      });
+      }
     });
-    if (foundInBand < Infinity) minPolyX = foundInBand;
   }
+  if (!foundAny) minPolyX = finalX;
 
-  // Tempelkan lingkaran rapat 4px di kiri kontur aktual pattern
-  let numCx = minPolyX - circleR - 4;
+  // Beri jarak aman 7px di luar garis kontur biru agar tidak pernah menempel
+  let numCx = minPolyX - circleR - 7;
   let numCy = bandTop;
 
-  // Jika mepet batas kiri sel (cx), taruh tepat di atas sudut kiri luar pattern (4px di atas finalY) agar tidak menindih garis biru
-  if (numCx < cx + circleR + 2) {
-    numCx = cx + circleR + 2;
-    if (finalY - cy >= (circleR * 2) + 6) {
-      numCy = finalY - circleR - 4;
+  // Jika masih mepet batas kiri sel (cx), taruh di atas sudut kiri luar pattern (jarak 6px di atas finalY)
+  if (numCx < cx + circleR + 3) {
+    numCx = cx + circleR + 3;
+    if (finalY - cy >= (circleR * 2) + 8) {
+      numCy = finalY - circleR - 6;
+    } else {
+      numCx = Math.max(cx + circleR + 3, finalX - circleR - 6);
     }
   }
   return { numCx, numCy };
@@ -1496,6 +1507,15 @@ function generateMiniMarker() {
       const finalY = cy + topSpace + (maxDrawH - finalH) / 2;
       const centerDrawX = finalX + finalW / 2;
 
+      // Pastikan ruang kiri sel cukup untuk lingkaran nomor (jarak bersih 7px dari garis luar biru)
+      const minLeftNeeded = cx + (circleR * 2) + 9;
+      if (finalX < minLeftNeeded) {
+        const qtyPad = piece.qtyLabel ? 32 : 6;
+        const maxAllowedX = (cx + cellW - qtyPad) - totalDrawW;
+        if (maxAllowedX > finalX) {
+          finalX = Math.min(minLeftNeeded, maxAllowedX);
+        }
+      }
       const { numCx, numCy } = calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH, circleR);
       ctx.beginPath();
       ctx.arc(numCx, numCy, circleR, 0, Math.PI * 2);
