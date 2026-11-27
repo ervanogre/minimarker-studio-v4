@@ -277,12 +277,19 @@ function extractPiecesFromDxf(dxf) {
           if (diag > maxDiag) { maxDiag = diag; outerIdx = idx; }
           return diag;
         });
-        const normPolys = allPolys.map((p, idx) => {
-          const pts = p.pts.map(pt => ({ x: pt.x - bounds.minX, y: bounds.maxY - pt.y }));
-          const isClosed = pts.length > 3 && Math.hypot(pts.at(0).x - pts.at(-1).x, pts.at(0).y - pts.at(-1).y) <= 1.5;
-          const isPerimeterPart = idx === outerIdx || (!isClosed && polyDiags.at(idx) >= mainDiag * 0.18);
-          return { pts, isOuter: isPerimeterPart };
-        });
+        const normPolys = allPolys
+          .map((p, idx) => {
+            const cleanPts = [];
+            p.pts.forEach(pt => {
+              const nx = pt.x - bounds.minX, ny = bounds.maxY - pt.y;
+              if (cleanPts.length === 0 || Math.hypot(nx - cleanPts.at(-1).x, ny - cleanPts.at(-1).y) >= 0.8) {
+                cleanPts.push({ x: nx, y: ny });
+              }
+            });
+            const isClosed = cleanPts.length > 3 && Math.hypot(cleanPts.at(0).x - cleanPts.at(-1).x, cleanPts.at(0).y - cleanPts.at(-1).y) <= 2.0;
+            return { pts: cleanPts, isOuter: idx === outerIdx, isClosed };
+          })
+          .filter(p => p.pts.length >= 2 && (p.isOuter || getBounds([p.pts]).width >= 3 || getBounds([p.pts]).height >= 3));
         const fullText = labelTexts.join(' | ').replace(/\s*-\s*/g, '-');
         const cleanName = fullText.replace(/Sewing|Cut|Boundary|Piece|Name[:\s]*/gi, '').replace(/-S_\d+/gi, '').split('|').pop().trim().toUpperCase().substring(0, 26);
         rawPieces.push({
@@ -327,10 +334,15 @@ function extractPiecesFromDxf(dxf) {
     }
   }
   const uniquePieces = [];
+  const normBaseKey = (s) => getBasePairName(String(s || '')).replace(/[\s_\-]+(?:\d+|L|R|LEFT|RIGHT|A|B|1|2|3|4)$/i, '').trim();
   rawPieces.forEach(p => {
-    const baseP = getBasePairName(p.name);
+    const baseP = normBaseKey(p.name);
     const isMarkedLR = /[\s_\-]+(L|R|LEFT|RIGHT|A|B)$/i.test(p.name);
-    const dup = uniquePieces.find(u => getBasePairName(u.name) === baseP && Math.abs(u.width - p.width) < 4 && Math.abs(u.height - p.height) < 4);
+    const dup = uniquePieces.find(u => {
+      const sameDim = (Math.abs(u.width - p.width) < 6 && Math.abs(u.height - p.height) < 6)
+                   || (Math.abs(u.width - p.height) < 6 && Math.abs(u.height - p.width) < 6);
+      return sameDim && normBaseKey(u.name) === baseP;
+    });
     if (dup) {
       dup.dupCount = (dup.dupCount || 1) + 1;
       dup.secondPolygons = p.polygons;
@@ -1011,6 +1023,18 @@ function applyColorwayMapping() {
   if (extraCrossFabPieces.length > 0) {
       parsedPieces = parsedPieces.concat(extraCrossFabPieces);
     }
+    const dedupedPieces = [];
+    parsedPieces.forEach(p => {
+      const exist = dedupedPieces.find(d => d.fabric === p.fabric && d.name === p.name && d.sizeText === p.sizeText);
+      if (exist) {
+        if (!exist.qtyLabel) exist.qtyLabel = 'A/B';
+        else if (exist.qtyLabel === 'A/B') exist.qtyLabel = 'Ax2 Bx2';
+      } else {
+        dedupedPieces.push(p);
+      }
+    });
+    parsedPieces = dedupedPieces;
+    parsedPieces.sort((a, b) => (a.bomOrder ?? 9999) - (b.bomOrder ?? 9999));
   }
 
   renderPieceMappingList();
@@ -1484,9 +1508,9 @@ function generateMiniMarker() {
             const py = finalY + ry * pairScale;
             if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
           });
-          ctx.strokeStyle = poly.isOuter ? '#0000ff' : '#64748b';
-          ctx.lineWidth = poly.isOuter ? 2.1 : 0.9;
-          if (poly.isOuter) ctx.closePath();
+          ctx.strokeStyle = poly.isOuter ? '#0000ff' : '#000000';
+          ctx.lineWidth = poly.isOuter ? 2.1 : 1.05;
+          if (poly.isOuter || poly.isClosed) ctx.closePath();
           ctx.stroke();
         });
       };
