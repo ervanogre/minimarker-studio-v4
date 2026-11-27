@@ -960,9 +960,17 @@ function applyColorwayMapping() {
           if (combinedNames) bestItem = { ...bestItem, name: combinedNames };
         }
       } else {
-        // Fallback: ambil baris JACJI belum terpakai paling awal di fabric yang sama (misal No. 1 & 2 JACJI yang digabung di DXF)
-        const unusedSameFab = availableBom.filter(b => !b.used && b.fabric === p.fabric).sort((a, b) => a.idx - b.idx);
-        const unusedPool = unusedSameFab.length > 0 ? unusedSameFab : availableBom.filter(b => !b.used).sort((a, b) => a.idx - b.idx);
+        // Fallback aman: hanya cocokkan dengan baris BOM yang selisih ukurannya masuk akal (<= 4.5 cm) agar tidak salah bentuk
+        const closeUnused = availableBom
+          .filter(b => !b.used)
+          .map(b => {
+            const [s1, s2] = String(b.size || '').split('*').map(Number);
+            const diff = (s1 && s2) ? Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1)) : 999;
+            return { b, diff };
+          })
+          .filter(x => x.diff <= 4.5)
+          .sort((a, b) => (a.b.fabric === p.fabric ? 0 : 1) - (b.b.fabric === p.fabric ? 0 : 1) || a.diff - b.diff);
+        const unusedPool = closeUnused.map(x => x.b);
         if (unusedPool.length > 0) {
           bestItem = unusedPool.at(0);
           // Jika ada 2 baris JACJI berurutan yang belum terpakai di awal (misal idx 0 & idx 1), gabungkan keduanya
@@ -3537,7 +3545,14 @@ function computeDynamicGridLayout(piecesList, customCols, customRows, sampleBoxW
     const mH = Math.max(spanH - tSp - bSp, 24);
     const sNorm = Math.min(mW / Math.max(p.width, 1), mH / Math.max(p.height, 1));
     const sRot = Math.min(mW / Math.max(p.height, 1), mH / Math.max(p.width, 1));
-    p.autoRotate90 = sRot > sNorm * 1.03;
+    const dm = String(p.sizeText || '').match(/^(\d+(?:\.\d+)?)\s*[*xX]\s*(\d+(?:\.\d+)?)/);
+    if (dm && Math.abs(parseFloat(dm.at(1)) - parseFloat(dm.at(2))) > 1.0) {
+      const txtIsWide = parseFloat(dm.at(2)) > parseFloat(dm.at(1));
+      const dxfIsWide = p.width > p.height;
+      p.autoRotate90 = (txtIsWide !== dxfIsWide);
+    } else {
+      p.autoRotate90 = sRot > sNorm * 1.03;
+    }
     p.maxAllowedScale = p.autoRotate90 ? sRot : sNorm;
     if (p._colSpan === 1 && p._rowSpan === 1) normalScales.push(p.maxAllowedScale);
   });
