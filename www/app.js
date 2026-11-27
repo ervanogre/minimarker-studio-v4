@@ -1015,7 +1015,7 @@ function applyColorwayMapping() {
     const bPrefCross = String(b.raw || b.name || '').split(/[-_\s]/).at(0).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const matchDxf = parsedPieces
       .filter(p => {
-        if (p.fabric === b.fabric) return false;
+        if (p.fabric === b.fabric && p.name === b.name) return false;
         const up = String(p.rawText || '').toUpperCase();
         const pClean = up.replace(/[^A-Z0-9]/g, '');
         const hasCode = b.codes && b.codes.length > 0;
@@ -1336,12 +1336,12 @@ function generateMiniMarker() {
   // Gabungkan semua pattern kembar pada fabric yang sama sebelum digambar ke kanvas
   const uniqueRenderList = [];
   parsedPieces.forEach(p => {
-    const cleanN = String(p.name || '').replace(/[\s_\-]+(?:\d+|L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
+    const cleanN = String(p.name || '').replace(/[\s_\-]+(?:L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
     const cleanS = String(p.sizeText || '').trim().toUpperCase();
     const exist = uniqueRenderList.find(u => {
-      const uN = String(u.name || '').replace(/[\s_\-]+(?:\d+|L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
+      const uN = String(u.name || '').replace(/[\s_\-]+(?:L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
       const uS = String(u.sizeText || '').trim().toUpperCase();
-      return u.fabric === p.fabric && uN === cleanN && uS === cleanS;
+      return u.fabric === p.fabric && uN === cleanN && uS === cleanS && (u.bomOrder === p.bomOrder || typeof p.bomOrder !== 'number');
     });
     if (exist) {
       if (!exist.qtyLabel) exist.qtyLabel = 'A/B';
