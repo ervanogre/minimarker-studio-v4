@@ -3495,11 +3495,69 @@ function computeDynamicGridLayout(piecesList, customCols, customRows, sampleBoxW
     }
   });
 
+  const targetPages = Math.max(1, parseInt(document.getElementById('pagesSelect')?.value) || 1);
   const totalCellsNeeded = piecesList.reduce((acc, p) => acc + (p._colSpan * p._rowSpan), 0);
-  let cols = customCols !== 'auto' ? parseInt(customCols) : Math.min(8, Math.max(5, Math.ceil(Math.sqrt(totalCellsNeeded * 1.45))));
-  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : Math.min(6, Math.max(3, Math.ceil(totalCellsNeeded / cols)));
+  const cellsPerTargetPage = Math.ceil(totalCellsNeeded / targetPages);
+
+  // Cari kombinasi (cols, rowsPerPage) paling efisien untuk targetPages lembar (default 1 lembar)
+  let cols = customCols !== 'auto' ? parseInt(customCols) : Math.max(4, Math.ceil(Math.sqrt(cellsPerTargetPage * (sampleBoxW / Math.max(sampleBoxH, 1)))));
+  let rowsPerPage = customRows !== 'auto' ? parseInt(customRows) : Math.max(2, Math.ceil(cellsPerTargetPage / cols));
   if (cols < 2) cols = 2;
   if (rowsPerPage < 2) rowsPerPage = 2;
+
+  // Pastikan seluruh komponen benar-benar muat di dalam targetPages lembar (tidak meluap otomatis ke lembar baru)
+  const simulatePagesCount = (cTry, rTry) => {
+    let pg = 1, occTry = Array.from({ length: cTry }, () => Array(rTry).fill(false));
+    piecesList.forEach(p => {
+      const cs = Math.min(p._colSpan, cTry), rs = Math.min(p._rowSpan, rTry);
+      let ok = false;
+      for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+        for (let c = 0; c < cTry && !ok; c++) {
+          for (let r = 0; r < rTry && !ok; r++) {
+            let free = (c + cs <= cTry && r + rs <= rTry);
+            for (let dc = 0; dc < cs && free; dc++) for (let dr = 0; dr < rs && free; dr++) if (occTry[c + dc][r + dr]) free = false;
+            if (free) {
+              for (let dc = 0; dc < cs; dc++) for (let dr = 0; dr < rs; dr++) occTry[c + dc][r + dr] = true;
+              ok = true;
+            }
+          }
+        }
+        if (!ok && attempt === 0) {
+          pg++;
+          occTry = Array.from({ length: cTry }, () => Array(rTry).fill(false));
+        }
+      }
+    });
+    return pg;
+  };
+
+  // Jika Auto, optimalkan pasangan (cols, rowsPerPage) yang muat di targetPages dengan efisiensi ruang tertinggi
+  if (customCols === 'auto' && customRows === 'auto') {
+    let bestCombo = null, bestEff = -1;
+    for (let cCand = 4; cCand <= 14; cCand++) {
+      for (let rCand = 2; rCand <= 10; rCand++) {
+        if (cCand * rCand < cellsPerTargetPage) continue;
+        if (simulatePagesCount(cCand, rCand) > targetPages) continue;
+        const cw = (sampleBoxW - 24) / cCand, ch = (sampleBoxH - 18) / rCand;
+        const mW = Math.max(cw - 44, 20), mH = Math.max(ch - (labelSize * 4) - 24, 20);
+        // Hitung skala botol leher untuk kombinasi ini agar efisiensi kertas maksimal
+        let minSc = Infinity;
+        piecesList.forEach(p => {
+          const sw = mW * Math.min(p._colSpan, cCand), sh = mH * Math.min(p._rowSpan, rCand);
+          const sc = Math.max(Math.min(sw / Math.max(p.width, 1), sh / Math.max(p.height, 1)), Math.min(sw / Math.max(p.height, 1), sh / Math.max(p.width, 1)));
+          if (sc < minSc) minSc = sc;
+        });
+        if (minSc > bestEff) { bestEff = minSc; bestCombo = { c: cCand, r: rCand }; }
+      }
+    }
+    if (bestCombo) { cols = bestCombo.c; rowsPerPage = bestCombo.r; }
+  } else {
+    while (simulatePagesCount(cols, rowsPerPage) > targetPages && (cols < 16 || rowsPerPage < 12)) {
+      if (customCols === 'auto' && cols <= rowsPerPage + 2) cols++;
+      else if (customRows === 'auto') rowsPerPage++;
+      else cols++;
+    }
+  }
 
   // Susun penempatan sel secara berurutan (kolom demi kolom, baris demi baris) tanpa tabrakan
   const pages = [];
@@ -3563,14 +3621,7 @@ function computeDynamicGridLayout(piecesList, customCols, customRows, sampleBoxW
     const mH = Math.max(spanH - tSp - bSp, 24);
     const sNorm = Math.min(mW / Math.max(p.width, 1), mH / Math.max(p.height, 1));
     const sRot = Math.min(mW / Math.max(p.height, 1), mH / Math.max(p.width, 1));
-    const dm = String(p.sizeText || '').match(/^(\d+(?:\.\d+)?)\s*[*xX]\s*(\d+(?:\.\d+)?)/);
-    if (dm && Math.abs(parseFloat(dm.at(1)) - parseFloat(dm.at(2))) > 1.0) {
-      const txtIsWide = parseFloat(dm.at(2)) > parseFloat(dm.at(1));
-      const dxfIsWide = p.width > p.height;
-      p.autoRotate90 = (txtIsWide !== dxfIsWide);
-    } else {
-      p.autoRotate90 = sRot > sNorm * 1.03;
-    }
+    p.autoRotate90 = sRot > sNorm * 1.03;
     p.maxAllowedScale = p.autoRotate90 ? sRot : sNorm;
     if (p._colSpan === 1 && p._rowSpan === 1) normalScales.push(p.maxAllowedScale);
   });

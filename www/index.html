@@ -1259,6 +1259,16 @@
               <button type="button" onclick="stepSelectVal('rowsSelect',1)" style="width:26px; height:28px; min-width:26px; padding:0; font-size:14px;">+</button>
             </div>
           </div>
+          <div>
+            <div style="font-size:10px; color:#94a3b8; margin-bottom:2px;">LEMBAR</div>
+            <div style="display:flex; align-items:center; gap:3px;">
+              <button type="button" onclick="stepSelectVal('pagesSelect',-1)" style="width:26px; height:28px; min-width:26px; padding:0; font-size:14px;">-</button>
+              <select id="pagesSelect" style="width:100%; height:28px; padding:0 2px; font-size:11px; margin:0;" onchange="stepSelectVal('pagesSelect',0)">
+                <option value="1" selected>1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+              </select>
+              <button type="button" onclick="stepSelectVal('pagesSelect',1)" style="width:26px; height:28px; min-width:26px; padding:0; font-size:14px;">+</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1336,7 +1346,7 @@
   <script>
 try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
 </script>
-<script src="app.js?v=1795760261"></script>
+<script src="app.js?v=1795762297"></script>
   <div id="quickEditModal" class="hidden" style="position:fixed; inset:0; z-index:999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:16px;">
     <div style="width:100%; max-width:380px; background:#141226; border:1.5px solid var(--neon-cyan); border-radius:14px; padding:16px; box-shadow:0 12px 32px rgba(0,245,212,0.25);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
