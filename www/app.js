@@ -4092,3 +4092,56 @@ function handleLululemonExcelUpload(event) {
   vp.addEventListener('pointerup', stopPan, true);
   vp.addEventListener('pointercancel', stopPan, true);
 })();
+
+(function forceLongPressDragPreview() {
+  const style = document.createElement('style');
+  style.textContent = '#fsViewport, #fsViewport * { touch-action: none !important; user-select: none !important; -webkit-user-select: none !important; }';
+  document.head.appendChild(style);
+
+  let sx = 0, sy = 0, lx = 0, ly = 0, isDragging = false, timer = null;
+
+  document.addEventListener('touchstart', function(e) {
+    const vp = document.getElementById('fsViewport');
+    if (!vp || !vp.contains(e.target)) return;
+    if (timer) { clearTimeout(timer); timer = null; }
+    isDragging = false;
+    if (e.touches.length !== 1) return;
+
+    sx = e.touches.item(0).clientX;
+    sy = e.touches.item(0).clientY;
+    lx = typeof fsX === 'number' ? fsX : 0;
+    ly = typeof fsY === 'number' ? fsY : 0;
+
+    timer = setTimeout(function() {
+      isDragging = true;
+      const h = document.getElementById('fsCanvasHolder');
+      if (h) h.style.outline = '2px solid #00f5d4';
+      if (navigator.vibrate) try { navigator.vibrate(30); } catch (_) {}
+    }, 150);
+  }, { capture: true, passive: false });
+
+  document.addEventListener('touchmove', function(e) {
+    const vp = document.getElementById('fsViewport');
+    if (!vp || !vp.contains(e.target) || e.touches.length !== 1) return;
+    if (!isDragging) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    fsX = lx + (e.touches.item(0).clientX - sx);
+    fsY = ly + (e.touches.item(0).clientY - sy);
+    if (typeof applyFsTransform === 'function') applyFsTransform();
+  }, { capture: true, passive: false });
+
+  const endDrag = function(e) {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (isDragging) {
+      if (e.cancelable) e.preventDefault();
+      e.stopImmediatePropagation();
+      isDragging = false;
+      const h = document.getElementById('fsCanvasHolder');
+      if (h) h.style.outline = 'none';
+    }
+  };
+
+  document.addEventListener('touchend', endDrag, { capture: true, passive: false });
+  document.addEventListener('touchcancel', endDrag, { capture: true, passive: false });
+})();
