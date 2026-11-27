@@ -1323,7 +1323,7 @@
       <button type="button" onclick="closeFullPreview()" style="background:var(--neon-pink); color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:900;">✕ TUTUP</button>
     </div>
     <div id="fsViewport" style="flex:1; width:100%; height:100%; overflow:hidden; position:relative; touch-action:none; display:flex; align-items:center; justify-content:center;">
-      <div id="fsCanvasHolder" style="transform-origin:center center; transition:none; display:flex; align-items:center; justify-content:center;"></div>
+      <div id="fsCanvasHolder" style="position:relative; display:inline-block; flex-shrink:0; transform-origin:center center; will-change:transform;"></div>
     </div>
     <div style="display:flex; gap:6px; padding:10px 12px; background:#110f21; border-top:1.5px solid var(--neon-pink);">
       <button type="button" onclick="fsZoom(-0.4)" style="flex:1; background:#07060e; color:var(--neon-cyan); border:1px solid var(--neon-cyan); border-radius:8px; padding:9px; font-weight:900;">🔍 -</button>
@@ -1335,7 +1335,7 @@
   <script>
 try { localStorage.removeItem("mm_live_app_js"); } catch(e) {}
 </script>
-<script src="app.js?v=1795759426"></script>
+<script src="app.js?v=1795760005"></script>
   <div id="quickEditModal" class="hidden" style="position:fixed; inset:0; z-index:999999; background:rgba(5,4,15,0.88); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:16px;">
     <div style="width:100%; max-width:380px; background:#141226; border:1.5px solid var(--neon-cyan); border-radius:14px; padding:16px; box-shadow:0 12px 32px rgba(0,245,212,0.25);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">

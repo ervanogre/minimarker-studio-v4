@@ -3643,6 +3643,7 @@ if (typeof openFullPreview === "function" && !window._wrappedFsClickEdit) {
       if (!fc._hasQuickEditBound) {
         fc._hasQuickEditBound = true;
         fc.addEventListener("click", function(ev) {
+          if (window._previewWasDragged) { ev.stopPropagation(); return; }
           const rect = fc.getBoundingClientRect();
           const clickX = (ev.clientX - rect.left) * (fc.width / rect.width);
           const clickY = (ev.clientY - rect.top) * (fc.height / rect.height);
@@ -4033,7 +4034,7 @@ function handleLululemonExcelUpload(event) {
     if (vp && vp.contains(e.target) && wasDragged) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      wasDragged = false;
+      wasDragged = false; window._previewWasDragged = false;
     }
   }, true);
 
@@ -4042,7 +4043,7 @@ function handleLululemonExcelUpload(event) {
     if (!vp || !vp.contains(e.target)) return;
     if (timer) { clearTimeout(timer); timer = null; }
     isDragging = false;
-    wasDragged = false;
+    wasDragged = false; window._previewWasDragged = false;
     if (typeof vp._panX !== 'number') vp._panX = 0;
     if (typeof vp._panY !== 'number') vp._panY = 0;
     if (typeof vp._panScale !== 'number') vp._panScale = 1;
@@ -4063,7 +4064,7 @@ function handleLululemonExcelUpload(event) {
 
       timer = setTimeout(function() {
         isDragging = true;
-        wasDragged = true;
+        wasDragged = true; window._previewWasDragged = true;
         const h = document.getElementById('fsCanvasHolder');
         if (h) h.style.outline = '2px solid #00f5d4';
         if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
@@ -4091,7 +4092,7 @@ function handleLululemonExcelUpload(event) {
       if (isDragging || (vp._panScale || 1) > 1) {
         if (timer) { clearTimeout(timer); timer = null; }
         isDragging = true;
-        wasDragged = true;
+        wasDragged = true; window._previewWasDragged = true;
         vp._panX = lx + dx;
         vp._panY = ly + dy;
         applyDirectTransform(vp);
@@ -4110,7 +4111,7 @@ function handleLululemonExcelUpload(event) {
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
       isDragging = false;
-      setTimeout(() => { wasDragged = false; }, 120);
+      setTimeout(() => { wasDragged = false; window._previewWasDragged = false; }, 120);
       return;
     }
     if (!pinching && (vp._panScale || 1) === 1 && e.changedTouches.length === 1) {
