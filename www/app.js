@@ -339,8 +339,8 @@ function extractPiecesFromDxf(dxf) {
     const baseP = normBaseKey(p.name);
     const isMarkedLR = /[\s_\-]+(L|R|LEFT|RIGHT|A|B)$/i.test(p.name);
     const dup = uniquePieces.find(u => {
-      const sameDim = (Math.abs(u.width - p.width) < 6 && Math.abs(u.height - p.height) < 6)
-                   || (Math.abs(u.width - p.height) < 6 && Math.abs(u.height - p.width) < 6);
+      const sameDim = (Math.abs(u.width - p.width) < 2.5 && Math.abs(u.height - p.height) < 2.5)
+                   || (Math.abs(u.width - p.height) < 2.5 && Math.abs(u.height - p.width) < 2.5);
       return sameDim && normBaseKey(u.name) === baseP;
     });
     if (dup) {
