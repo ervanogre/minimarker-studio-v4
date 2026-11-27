@@ -1016,20 +1016,20 @@ function applyColorwayMapping() {
     const matchDxf = parsedPieces
       .filter(p => {
         if (p.fabric === b.fabric && p.name === b.name) return false;
-        const up = String(p.rawText || '').toUpperCase();
-        const pClean = up.replace(/[^A-Z0-9]/g, '');
-        const hasCode = b.codes && b.codes.length > 0;
-        const codeOk = hasCode && b.codes.some(c => c.length >= 2 && up.includes(c));
-        const prefOk = bPrefCross.length >= 3 && pClean.includes(bPrefCross);
-        if ((hasCode || bPrefCross.length >= 3) && !codeOk && !prefOk) return false;
         const d1 = p.width / 10, d2 = p.height / 10;
         const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
         return minDiff <= 3.5;
       })
       .sort((a, b2) => {
-        const da = Math.min(Math.abs(a.width/10 - s1) + Math.abs(a.height/10 - s2), Math.abs(a.width/10 - s2) + Math.abs(a.height/10 - s1));
-        const db = Math.min(Math.abs(b2.width/10 - s1) + Math.abs(b2.height/10 - s2), Math.abs(b2.width/10 - s2) + Math.abs(b2.height/10 - s1));
-        return da - db;
+        const scoreCand = (cand) => {
+          const up = String(cand.rawText || '').toUpperCase();
+          const pClean = up.replace(/[^A-Z0-9]/g, '');
+          const codeOk = b.codes && b.codes.some(c => c.length >= 2 && up.includes(c));
+          const prefOk = bPrefCross.length >= 3 && pClean.includes(bPrefCross);
+          const diff = Math.min(Math.abs(cand.width/10 - s1) + Math.abs(cand.height/10 - s2), Math.abs(cand.width/10 - s2) + Math.abs(cand.height/10 - s1));
+          return diff - (codeOk ? 50 : 0) - (prefOk ? 30 : 0);
+        };
+        return scoreCand(a) - scoreCand(b2);
       })
       .at(0);
     const uniqueKey = `${b.fabric}|${b.name || (matchDxf && matchDxf.name)}|${b.size}`;
