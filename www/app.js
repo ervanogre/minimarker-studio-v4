@@ -1272,17 +1272,15 @@ function calcSmartCirclePos(piece, cx, cy, cellW, finalX, finalY, finalW, finalH
     if (foundInBand < Infinity) minPolyX = foundInBand;
   }
 
-  // Tempelkan lingkaran tepat 5px di kiri kontur aktual pattern
-  let numCx = minPolyX - circleR - 5;
+  // Tempelkan lingkaran rapat 4px di kiri kontur aktual pattern
+  let numCx = minPolyX - circleR - 4;
   let numCy = bandTop;
 
-  // Jika menabrak batas kiri sel (cx), coba taruh tepat di atas sudut kiri pattern bila ruang atas cukup
+  // Jika mepet batas kiri sel (cx), taruh tepat di atas sudut kiri luar pattern (4px di atas finalY) agar tidak menindih garis biru
   if (numCx < cx + circleR + 2) {
-    if (finalY - cy >= (circleR * 2) + 8) {
-      numCx = Math.max(cx + circleR + 3, minPolyX + circleR);
+    numCx = cx + circleR + 2;
+    if (finalY - cy >= (circleR * 2) + 6) {
       numCy = finalY - circleR - 4;
-    } else {
-      numCx = cx + circleR + 2;
     }
   }
   return { numCx, numCy };
@@ -1528,7 +1526,7 @@ function generateMiniMarker() {
         const sepW = ctx.measureText(sep).width;
         let curTextX = Math.min(procRightLimit - totalTextW, Math.max(procLeftLimit, centerDrawX - (totalTextW / 2)));
         curTextX = Math.max(procLeftLimit, curTextX);
-        const procY = Math.max(cy + effProcSize + 3, finalY - 5);
+        const procY = Math.min(finalY - 4, Math.max(cy + effProcSize + 2, finalY - 4));
         parts.forEach((pt, pIdx) => {
           ctx.fillStyle = getProcessColor(pt);
           ctx.fillText(pt, curTextX, procY);
@@ -1567,34 +1565,59 @@ function generateMiniMarker() {
 
       if (piece.qtyLabel) {
         ctx.fillStyle = '#000000';
-        ctx.font = 'bold ' + Math.max(labelSize - 2, 10) + 'px ' + fontFam;
+        let qFontSize = Math.max(labelSize - 2, 9);
+        ctx.font = 'bold ' + qFontSize + 'px ' + fontFam;
+        const qSample = piece.qtyLabel === 'Ax2 Bx2' ? 'Ax2' : piece.qtyLabel;
+        let qW = ctx.measureText(qSample).width;
+        while (qFontSize > 7 && (finalX + finalW + 4 + qW > cx + cellW - 2)) {
+          qFontSize -= 0.5;
+          ctx.font = 'bold ' + qFontSize + 'px ' + fontFam;
+          qW = ctx.measureText(qSample).width;
+        }
         ctx.textAlign = 'left';
-        const labelX = finalX + finalW + 5;
-        const labelY = Math.max(cy + 16, finalY + 11);
+        const labelX = Math.min(finalX + finalW + 4, cx + cellW - qW - 2);
+        const labelY = Math.max(cy + qFontSize + 4, finalY + qFontSize + 2);
         if (piece.qtyLabel === 'Ax2 Bx2') {
           ctx.fillText('Ax2', labelX, labelY);
-          ctx.fillText('Bx2', labelX, labelY + Math.max(labelSize, 12));
+          ctx.fillText('Bx2', labelX, labelY + Math.max(qFontSize + 1, 10));
         } else {
           ctx.fillText(piece.qtyLabel, labelX, labelY);
         }
       }
 
-      // Jaga jarak aman agar tulisan ukuran & nama pola tidak pernah bertumpuk dengan lingkaran nomor
+      // Rapatkan teks ukuran & nama 4px di bawah pattern/lingkaran namun tetap di dalam batas sel
       const circleBottom = numCy + circleR;
       const circleRight = numCx + circleR;
-      let py = Math.max(finalY + finalH + labelSize + 4, circleBottom + labelSize + 4);
-      const safeLeftX = (py - labelSize < circleBottom + 4) ? (circleRight + 6) : (cx + 5);
-      const safeRightX = cx + cellW - 5;
-      const maxCellW = Math.max(safeRightX - safeLeftX, 42);
-      const safeTextX = Math.max(safeLeftX + 18, (safeLeftX + safeRightX) / 2);
+      const anchorBottom = Math.max(finalY + finalH, circleBottom);
+      const safeLeftX = cx + 4;
+      const safeRightX = cx + cellW - 4;
+      const maxCellW = Math.max(safeRightX - safeLeftX, 44);
+      const safeTextX = (safeLeftX + safeRightX) / 2;
 
+      let effLabelSz = labelSize;
+      let effNameSz = Math.max(labelSize - 2, 8);
+      const availTextH = Math.max((cy + cellH - 2) - (anchorBottom + 3), 18);
+
+      const measureBlockH = (lsz, nsz) => {
+        ctx.font = 'bold ' + lsz + 'px ' + fontFam;
+        const l1 = wrapCanvasLines(ctx, piece.sizeText, maxCellW).length;
+        ctx.font = nsz + 'px ' + fontFam;
+        const l2 = wrapCanvasLines(ctx, piece.name, maxCellW).length;
+        return (l1 * Math.round(lsz * 1.12)) + (l2 * Math.round(nsz * 1.12));
+      };
+
+      while (effLabelSz > 8 && measureBlockH(effLabelSz, effNameSz) > availTextH) {
+        effLabelSz -= 0.5;
+        effNameSz = Math.max(effLabelSz - 1.5, 7);
+      }
+
+      let py = anchorBottom + Math.round(effLabelSz) + 3;
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'center';
-      ctx.font = 'bold ' + labelSize + 'px ' + fontFam;
-      wrapCanvasLines(ctx, piece.sizeText, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(labelSize * 1.15); });
-      const nf = Math.max(labelSize - 2, 8);
-      ctx.font = nf + 'px ' + fontFam;
-      wrapCanvasLines(ctx, piece.name, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(nf * 1.15); });
+      ctx.font = 'bold ' + effLabelSz + 'px ' + fontFam;
+      wrapCanvasLines(ctx, piece.sizeText, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(effLabelSz * 1.12); });
+      ctx.font = effNameSz + 'px ' + fontFam;
+      wrapCanvasLines(ctx, piece.name, maxCellW).forEach(l => { ctx.fillText(l, safeTextX, py); py += Math.round(effNameSz * 1.12); });
     });
 
     let legY = boxY + boxH + fabHeaderSize + 12;
