@@ -1307,6 +1307,25 @@ function generateMiniMarker() {
       }
     });
   }
+  // Gabungkan semua pattern kembar pada fabric yang sama sebelum digambar ke kanvas
+  const uniqueRenderList = [];
+  parsedPieces.forEach(p => {
+    const cleanN = String(p.name || '').replace(/[\s_\-]+(?:\d+|L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
+    const cleanS = String(p.sizeText || '').trim().toUpperCase();
+    const exist = uniqueRenderList.find(u => {
+      const uN = String(u.name || '').replace(/[\s_\-]+(?:\d+|L|R|LEFT|RIGHT|A|B)$/i, '').trim().toUpperCase();
+      const uS = String(u.sizeText || '').trim().toUpperCase();
+      return u.fabric === p.fabric && uN === cleanN && uS === cleanS;
+    });
+    if (exist) {
+      if (!exist.qtyLabel) exist.qtyLabel = 'A/B';
+      else if (exist.qtyLabel === 'A/B') exist.qtyLabel = 'Ax2 Bx2';
+    } else {
+      uniqueRenderList.push(p);
+    }
+  });
+  parsedPieces = uniqueRenderList;
+
   const sortedPieces = [...parsedPieces].sort((a, b) => {
     const fDiff = (fabricNumberMap[a.fabric] || 99) - (fabricNumberMap[b.fabric] || 99);
     if (fDiff !== 0) return fDiff;
