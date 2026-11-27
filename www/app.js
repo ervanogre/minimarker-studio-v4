@@ -175,35 +175,114 @@ function getBounds(polysList) {
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
 
+function extractEntitySegments(ent) {
+  const segs = [];
+  if ((ent.type === 'LWPOLYLINE' || ent.type === 'POLYLINE') && ent.vertices && ent.vertices.length > 1) {
+    const pts = ent.vertices.map(v => ({ x: v.x, y: v.y }));
+    if (ent.shape && pts.length > 2) pts.push({ x: pts.at(0).x, y: pts.at(0).y });
+    segs.push(pts);
+  } else if (ent.type === 'LINE' && ent.vertices && ent.vertices.length === 2) {
+    segs.push([{ x: ent.vertices.at(0).x, y: ent.vertices.at(0).y }, { x: ent.vertices.at(1).x, y: ent.vertices.at(1).y }]);
+  } else if (ent.type === 'ARC' && ent.center && typeof ent.radius === 'number') {
+    const startA = (ent.startAngle || 0) * Math.PI / 180;
+    let endA = (ent.endAngle || 0) * Math.PI / 180;
+    if (endA <= startA) endA += Math.PI * 2;
+    const steps = Math.max(8, Math.ceil((endA - startA) / (Math.PI / 18)));
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = startA + ((endA - startA) * i / steps);
+      pts.push({ x: ent.center.x + ent.radius * Math.cos(a), y: ent.center.y + ent.radius * Math.sin(a) });
+    }
+    segs.push(pts);
+  } else if (ent.type === 'SPLINE') {
+    const rawPts = (ent.fitPoints && ent.fitPoints.length > 1) ? ent.fitPoints : ent.controlPoints;
+    if (rawPts && rawPts.length > 1) {
+      segs.push(rawPts.map(v => ({ x: v.x, y: v.y })));
+    }
+  }
+  return segs;
+}
+
+function chainContours(segList, tol = 1.2) {
+  const pool = segList.map(pts => ({ pts: [...pts], used: false })).filter(s => s.pts.length >= 2);
+  const chains = [];
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  for (let i = 0; i < pool.length; i++) {
+    if (pool.at(i).used) continue;
+    pool.at(i).used = true;
+    let chain = [...pool.at(i).pts];
+    let extended = true;
+    while (extended) {
+      extended = false;
+      const head = chain.at(0);
+      const tail = chain.at(-1);
+      if (chain.length > 3 && dist(head, tail) <= tol) break;
+      for (let j = 0; j < pool.length; j++) {
+        if (pool.at(j).used) continue;
+        const cand = pool.at(j).pts;
+        const cHead = cand.at(0);
+        const cTail = cand.at(-1);
+        if (dist(tail, cHead) <= tol) {
+          chain.push(...cand.slice(1));
+          pool.at(j).used = true;
+          extended = true;
+          break;
+        } else if (dist(tail, cTail) <= tol) {
+          chain.push(...[...cand].reverse().slice(1));
+          pool.at(j).used = true;
+          extended = true;
+          break;
+        } else if (dist(head, cTail) <= tol) {
+          chain = [...cand.slice(0, -1), ...chain];
+          pool.at(j).used = true;
+          extended = true;
+          break;
+        } else if (dist(head, cHead) <= tol) {
+          chain = [...[...cand].reverse().slice(0, -1), ...chain];
+          pool.at(j).used = true;
+          extended = true;
+          break;
+        }
+      }
+    }
+    chains.push({ pts: chain });
+  }
+  return chains;
+}
+
 function extractPiecesFromDxf(dxf) {
   const rawPieces = [];
   if (dxf.blocks && Object.keys(dxf.blocks).length > 0) {
     for (const [blockName, block] of Object.entries(dxf.blocks)) {
       if (blockName.startsWith('*')) continue;
-      const allPolys = [];
+      const rawSegs = [];
       let labelTexts = [blockName];
       (block.entities || []).forEach(ent => {
-        if ((ent.type === 'LWPOLYLINE' || ent.type === 'POLYLINE') && ent.vertices && ent.vertices.length > 1) {
-          allPolys.push({ pts: ent.vertices.map(v => ({ x: v.x, y: v.y })) });
-        } else if (ent.type === 'LINE' && ent.vertices && ent.vertices.length === 2) {
-          allPolys.push({ pts: ent.vertices.map(v => ({ x: v.x, y: v.y })) });
-        } else if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && ent.text) {
+        if ((ent.type === 'TEXT' || ent.type === 'MTEXT') && ent.text) {
           labelTexts.push(ent.text.replace(/\\P/g, ' ').trim());
+        } else {
+          extractEntitySegments(ent).forEach(s => rawSegs.push(s));
         }
       });
+      const allPolys = chainContours(rawSegs, 1.2);
       if (allPolys.length > 0) {
         const bounds = getBounds(allPolys.map(p => p.pts));
         if (bounds.width < 5 && bounds.height < 5) continue;
+        const mainDiag = Math.hypot(bounds.width, bounds.height);
         let maxDiag = 0, outerIdx = 0;
-        allPolys.forEach((p, idx) => {
+        const polyDiags = allPolys.map((p, idx) => {
           const b = getBounds([p.pts]);
           const diag = Math.hypot(b.width, b.height);
           if (diag > maxDiag) { maxDiag = diag; outerIdx = idx; }
+          return diag;
         });
-        const normPolys = allPolys.map((p, idx) => ({
-          pts: p.pts.map(pt => ({ x: pt.x - bounds.minX, y: bounds.maxY - pt.y })),
-          isOuter: idx === outerIdx
-        }));
+        const normPolys = allPolys.map((p, idx) => {
+          const pts = p.pts.map(pt => ({ x: pt.x - bounds.minX, y: bounds.maxY - pt.y }));
+          const isClosed = pts.length > 3 && Math.hypot(pts.at(0).x - pts.at(-1).x, pts.at(0).y - pts.at(-1).y) <= 1.5;
+          const isPerimeterPart = idx === outerIdx || (!isClosed && polyDiags.at(idx) >= mainDiag * 0.18);
+          return { pts, isOuter: isPerimeterPart };
+        });
         const fullText = labelTexts.join(' | ').replace(/\s*-\s*/g, '-');
         const cleanName = fullText.replace(/Sewing|Cut|Boundary|Piece|Name[:\s]*/gi, '').replace(/-S_\d+/gi, '').split('|').pop().trim().toUpperCase().substring(0, 26);
         rawPieces.push({
