@@ -935,9 +935,13 @@ function applyColorwayMapping() {
         if (dxfFab && bomFab) {
           score += (dxfFab === bomFab) ? -100 : 250;
         }
-        if (b.codes && b.codes.some(c => c.length >= 2 && up.includes(c))) score -= 40;
+        const bPrefix = String(b.raw || b.name || '').split(/[-_\s]/).at(0).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const pCleanUp = up.replace(/[^A-Z0-9]/g, '');
+        const exactPrefixHit = (bPrefix.length >= 3 && pCleanUp.includes(bPrefix)) || (b.codes && b.codes.some(c => c.length >= 2 && up.includes(c)));
+        if (exactPrefixHit) score -= 500;
+        else score += 300;
         const bomWords = String(b.name || '').toUpperCase().split(/[^A-Z0-9]+/).filter(w => w.length >= 4);
-        if (dxfWords.some(dw => bomWords.includes(dw))) score -= 25;
+        if (dxfWords.some(dw => bomWords.includes(dw))) score -= 60;
         if (score < bestScore) { bestScore = score; bestItem = b; }
       }
     });
@@ -1008,12 +1012,26 @@ function applyColorwayMapping() {
     const dimP = String(b.size || "").split("*").map(Number);
     const s1 = dimP.at(0), s2 = dimP.at(1);
     if (!s1 || !s2) return;
-    const matchDxf = parsedPieces.find(p => {
-      if (p.fabric === b.fabric) return false;
-      const d1 = p.width / 10, d2 = p.height / 10;
-      const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
-      return minDiff <= 2.2;
-    });
+    const bPrefCross = String(b.raw || b.name || '').split(/[-_\s]/).at(0).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const matchDxf = parsedPieces
+      .filter(p => {
+        if (p.fabric === b.fabric) return false;
+        const up = String(p.rawText || '').toUpperCase();
+        const pClean = up.replace(/[^A-Z0-9]/g, '');
+        const hasCode = b.codes && b.codes.length > 0;
+        const codeOk = hasCode && b.codes.some(c => c.length >= 2 && up.includes(c));
+        const prefOk = bPrefCross.length >= 3 && pClean.includes(bPrefCross);
+        if ((hasCode || bPrefCross.length >= 3) && !codeOk && !prefOk) return false;
+        const d1 = p.width / 10, d2 = p.height / 10;
+        const minDiff = Math.min(Math.abs(d1 - s1) + Math.abs(d2 - s2), Math.abs(d1 - s2) + Math.abs(d2 - s1));
+        return minDiff <= 3.5;
+      })
+      .sort((a, b2) => {
+        const da = Math.min(Math.abs(a.width/10 - s1) + Math.abs(a.height/10 - s2), Math.abs(a.width/10 - s2) + Math.abs(a.height/10 - s1));
+        const db = Math.min(Math.abs(b2.width/10 - s1) + Math.abs(b2.height/10 - s2), Math.abs(b2.width/10 - s2) + Math.abs(b2.height/10 - s1));
+        return da - db;
+      })
+      .at(0);
     const uniqueKey = `${b.fabric}|${b.name || (matchDxf && matchDxf.name)}|${b.size}`;
     if (matchDxf && !existingFabKeys.has(uniqueKey)) {
       b.used = true;
