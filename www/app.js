@@ -3960,20 +3960,80 @@ function handleLululemonExcelUpload(event) {
 
 
 
+
 (function unifiedPreviewController() {
   const style = document.createElement('style');
   style.textContent = '#fsViewport, #fsViewport * { touch-action: none !important; user-select: none !important; -webkit-user-select: none !important; -webkit-touch-callout: none !important; }';
   document.head.appendChild(style);
 
   let sx = 0, sy = 0, lx = 0, ly = 0, initDist = 0, initSc = 1;
-  let pinching = false, isDragging = false, timer = null;
+  let pinching = false, isDragging = false, wasDragged = false, timer = null;
 
-  // Matikan menu klik kanan / tekan lama bawaan browser di area preview agar tidak berkedip
+  function applyDirectTransform(vp) {
+    const h = document.getElementById('fsCanvasHolder');
+    const l = document.getElementById('fsZoomText');
+    if (!h) return;
+    const sc = vp._panScale || 1;
+    const ang = typeof fsAngle === 'number' ? fsAngle : 0;
+    const px = vp._panX || 0;
+    const py = vp._panY || 0;
+    const boost = (ang % 180 !== 0 && sc === 1) ? 1.35 : 1;
+    h.style.transition = 'none';
+    h.style.transform = `translate3d(${px}px, ${py}px, 0) rotate(${ang}deg) scale(${sc * boost})`;
+    if (l) l.textContent = Math.round(sc * 100) + '%';
+    try { fsX = px; fsY = py; fsScale = sc; } catch (_) {}
+  }
+
+  // Reset posisi saat tombol Reset, Zoom, Rotate, atau Buka Preview dipakai
+  const origOpen = window.openFullPreview;
+  if (typeof origOpen === 'function') {
+    window.openFullPreview = function() {
+      const vp = document.getElementById('fsViewport');
+      if (vp) { vp._panX = 0; vp._panY = 0; vp._panScale = 1; }
+      return origOpen.apply(this, arguments);
+    };
+  }
+  const origReset = window.fsReset;
+  if (typeof origReset === 'function') {
+    window.fsReset = function() {
+      const vp = document.getElementById('fsViewport');
+      if (vp) { vp._panX = 0; vp._panY = 0; vp._panScale = 1; }
+      return origReset.apply(this, arguments);
+    };
+  }
+  const origZoom = window.fsZoom;
+  if (typeof origZoom === 'function') {
+    window.fsZoom = function(d) {
+      const vp = document.getElementById('fsViewport');
+      if (vp) { vp._panScale = Math.min(Math.max((vp._panScale || 1) + d, 1), 4); }
+      const r = origZoom.apply(this, arguments);
+      if (vp) applyDirectTransform(vp);
+      return r;
+    };
+  }
+  const origRotate = window.fsRotate;
+  if (typeof origRotate === 'function') {
+    window.fsRotate = function() {
+      const vp = document.getElementById('fsViewport');
+      if (vp) { vp._panX = 0; vp._panY = 0; }
+      const r = origRotate.apply(this, arguments);
+      if (vp) applyDirectTransform(vp);
+      return r;
+    };
+  }
+
   document.addEventListener('contextmenu', function(e) {
     const vp = document.getElementById('fsViewport');
-    if (vp && vp.contains(e.target)) {
+    if (vp && vp.contains(e.target)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  // Blokir event click setelah selesai menggeser agar layar tidak berkedip atau membuka edit
+  document.addEventListener('click', function(e) {
+    const vp = document.getElementById('fsViewport');
+    if (vp && vp.contains(e.target) && wasDragged) {
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
+      wasDragged = false;
     }
   }, true);
 
@@ -3982,6 +4042,10 @@ function handleLululemonExcelUpload(event) {
     if (!vp || !vp.contains(e.target)) return;
     if (timer) { clearTimeout(timer); timer = null; }
     isDragging = false;
+    wasDragged = false;
+    if (typeof vp._panX !== 'number') vp._panX = 0;
+    if (typeof vp._panY !== 'number') vp._panY = 0;
+    if (typeof vp._panScale !== 'number') vp._panScale = 1;
 
     if (e.touches.length === 2) {
       pinching = true;
@@ -3989,16 +4053,17 @@ function handleLululemonExcelUpload(event) {
         e.touches.item(1).clientX - e.touches.item(0).clientX,
         e.touches.item(1).clientY - e.touches.item(0).clientY
       );
-      initSc = typeof fsScale === 'number' ? fsScale : 1;
+      initSc = vp._panScale;
     } else if (e.touches.length === 1) {
       pinching = false;
       sx = e.touches.item(0).clientX;
       sy = e.touches.item(0).clientY;
-      lx = typeof fsX === 'number' ? fsX : 0;
-      ly = typeof fsY === 'number' ? fsY : 0;
+      lx = vp._panX;
+      ly = vp._panY;
 
       timer = setTimeout(function() {
         isDragging = true;
+        wasDragged = true;
         const h = document.getElementById('fsCanvasHolder');
         if (h) h.style.outline = '2px solid #00f5d4';
         if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
@@ -4018,17 +4083,18 @@ function handleLululemonExcelUpload(event) {
         e.touches.item(1).clientX - e.touches.item(0).clientX,
         e.touches.item(1).clientY - e.touches.item(0).clientY
       );
-      fsScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
-      if (typeof applyFsTransform === 'function') applyFsTransform();
+      vp._panScale = Math.min(Math.max(initSc * (dist / initDist), 1), 4);
+      applyDirectTransform(vp);
     } else if (e.touches.length === 1 && !pinching) {
       const dx = e.touches.item(0).clientX - sx;
       const dy = e.touches.item(0).clientY - sy;
-      if (isDragging || (typeof fsScale === 'number' && fsScale > 1)) {
+      if (isDragging || (vp._panScale || 1) > 1) {
         if (timer) { clearTimeout(timer); timer = null; }
         isDragging = true;
-        fsX = lx + dx;
-        fsY = ly + dy;
-        if (typeof applyFsTransform === 'function') applyFsTransform();
+        wasDragged = true;
+        vp._panX = lx + dx;
+        vp._panY = ly + dy;
+        applyDirectTransform(vp);
       }
     }
   }, { capture: true, passive: false });
@@ -4044,9 +4110,10 @@ function handleLululemonExcelUpload(event) {
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
       isDragging = false;
+      setTimeout(() => { wasDragged = false; }, 120);
       return;
     }
-    if (!pinching && (typeof fsScale !== 'number' || fsScale === 1) && e.changedTouches.length === 1) {
+    if (!pinching && (vp._panScale || 1) === 1 && e.changedTouches.length === 1) {
       const dx = e.changedTouches.item(0).clientX - sx;
       if (Math.abs(dx) > 65 && typeof navigateColorway === 'function') {
         navigateColorway(dx < 0 ? 1 : -1);
